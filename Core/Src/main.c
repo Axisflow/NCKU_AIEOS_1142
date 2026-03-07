@@ -55,7 +55,26 @@ static void MX_GPIO_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+BaseType_t xReturned;
+TaskHandle_t xHandle=NULL;
 
+void LED_Task( void * ){
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
+	for(;;){
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET );
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET );
+		vTaskDelay(50);
+		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_RESET );
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_SET );
+    vTaskDelay(50);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, GPIO_PIN_RESET );
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET );
+    vTaskDelay(50);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET );
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET );
+    vTaskDelay(50);
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -88,7 +107,16 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-  vTaskStartScheduler(); /* Start FreeRTOS scheduler */
+  xTaskCreate(
+		  LED_Task,
+		  "NAME",
+		  128,
+		  NULL,
+		  1,
+		  &xHandle
+    );
+
+  vTaskStartScheduler();
   /* USER CODE END 2 */
 
   /* Infinite loop */
