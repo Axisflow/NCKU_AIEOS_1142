@@ -1,6 +1,6 @@
 # Analysis and Implementation of Embedded Operating Systems — STM32F407VG with FreeRTOS
 
-基於 STM32F407G-DISC1 開發板的初始專案，使用 FreeRTOS 實作一系列「1142 嵌入式作業系統分析與實作」課程的實驗。
+基於 STM32F407G-DISC1 開發板的初始專案，使用 FreeRTOS 實作一系列「1142 嵌入式作業系統分析與實作」課程的實驗。你可以使用 `git checkout <實驗分支名稱>` 切換到對應的實驗分支，查看每個實驗的具體實作細節。
 
 ## 開發環境
 
