@@ -45,3 +45,9 @@
 ├── STM32F407VGTX_FLASH.ld  # Flash linker script
 └── STM32F407VGTX_RAM.ld    # RAM linker script
 ```
+
+## 參考連結
+
+- [使用說明書](https://www.st.com/resource/en/user_manual/dm00039084-discovery-kit-with-stm32f407vg-mcu-stmicroelectronics.pdf) (Discovery kit with STM32F407VG MCU - User manual)
+- [開發板硬體規格書](https://www.st.com/resource/en/reference_manual/dm00031020-stm32f405-415-stm32f407-417-stm32f427-437-and-stm32f429-439-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) (STM32F405/415, STM32F407/417, STM32F427/437 and STM32F429/439 advanced Arm®-based 32-bit MCUs - Reference manual)
+- [FreeRTOS API 參考書](https://www.freertos.org/a00106.html) (FreeRTOS API Reference)
