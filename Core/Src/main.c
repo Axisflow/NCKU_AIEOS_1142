@@ -32,7 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define loop for(;;)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,7 +55,100 @@ static void MX_GPIO_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define STATE_S1_RED 4
+#define STATE_S1_ORANGE 3
+#define STATE_S1_GREEN 2
+#define STATE_S2_OFF 1
+#define STATE_S2_ON 0
 
+char state = STATE_S1_RED;
+
+TaskHandle_t xLEDHandle = NULL;
+void LED_Task( void *_ ) {
+	loop {
+    HAL_GPIO_WritePin(GPIOD, GREEN_LED_Pin | ORANGE_LED_Pin | RED_LED_Pin, GPIO_PIN_RESET );
+		switch(state){
+
+      case STATE_S1_RED:
+        HAL_GPIO_WritePin(GPIOD, RED_LED_Pin, GPIO_PIN_SET );
+        state = STATE_S1_ORANGE;
+        vTaskDelay(1000);
+        break;
+
+      case STATE_S1_ORANGE:
+        HAL_GPIO_WritePin(GPIOD, ORANGE_LED_Pin, GPIO_PIN_SET );
+        state = STATE_S1_GREEN;
+        vTaskDelay(1000);
+        break;
+
+      case STATE_S1_GREEN:
+        HAL_GPIO_WritePin(GPIOD, GREEN_LED_Pin, GPIO_PIN_SET );
+        state = STATE_S1_RED;
+        vTaskDelay(1000);
+        break;
+
+      case STATE_S2_OFF:
+        state = STATE_S2_ON;
+        vTaskDelay(500);
+        break;
+
+      case STATE_S2_ON:
+        HAL_GPIO_WritePin(GPIOD, ORANGE_LED_Pin, GPIO_PIN_SET );
+        state = STATE_S2_OFF;
+        vTaskDelay(500);
+        break;
+
+      default:
+        state = STATE_S2_ON;
+        break;
+
+    }
+	}
+}
+
+void Clicked( char *state ) {
+  *state += STATE_S1_ORANGE;
+}
+
+void Long_Clicked( char *ledSuspended ) {
+  char s = *ledSuspended;
+  if(s) {
+    vTaskResume(xLEDHandle);
+  } else {
+    vTaskSuspend(xLEDHandle);
+  }
+
+  *ledSuspended = !s;
+}
+
+TaskHandle_t xButtonHandle = NULL;
+void Button_Task( void *_ ){
+  unsigned char counter = 0;
+  char ledSuspended = 0;
+  loop {
+    if(HAL_GPIO_ReadPin(BLUE_BUTTON_GPIO_Port, BLUE_BUTTON_Pin) == GPIO_PIN_SET) {
+      vTaskDelay(10);
+      while(HAL_GPIO_ReadPin(BLUE_BUTTON_GPIO_Port, BLUE_BUTTON_Pin) == GPIO_PIN_SET) {
+        if(counter < 20) {
+          counter++;
+        }
+        
+        if(counter == 20) {
+          Long_Clicked(&ledSuspended);
+          counter++;
+        }
+
+        vTaskDelay(50);
+      }
+
+      if(20 > counter && counter > 0) {
+        Clicked(&state);
+      }
+
+      counter = 0;
+    }
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -88,6 +181,9 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
+  xTaskCreate(LED_Task, "LED Task", 128, NULL, 3, &xLEDHandle);
+  xTaskCreate(Button_Task, "Button Task", 128, NULL, 1, &xButtonHandle);
+
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
