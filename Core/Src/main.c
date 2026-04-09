@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,12 +62,16 @@ static void MX_GPIO_Init(void);
 #define STATE_S2_OFF 1
 #define STATE_S2_ON 0
 
-char state = STATE_S1_RED;
-
-TaskHandle_t xLEDHandle = NULL;
-void LED_Task( void *_ ) {
+void LED_Task( void *stateChanges ) {
+  xQueueHandle sc = (xQueueHandle) stateChanges;
+  void *clicked;
+  char state = STATE_S1_RED;
 	loop {
     HAL_GPIO_WritePin(GPIOD, GREEN_LED_Pin | ORANGE_LED_Pin | RED_LED_Pin, GPIO_PIN_RESET );
+    if (xQueueReceive(sc, &clicked, 0) == pdPASS) {
+      state += STATE_S1_ORANGE;
+    }
+
 		switch(state){
 
       case STATE_S1_RED:
@@ -106,11 +111,11 @@ void LED_Task( void *_ ) {
 	}
 }
 
-void Clicked( char *state ) {
-  *state += STATE_S1_ORANGE;
+void Clicked( xQueueHandle sc, const char *clicked ) {
+  xQueueSend(sc, (void *) clicked, 0);
 }
 
-void Long_Clicked( char *ledSuspended ) {
+void Long_Clicked( TaskHandle_t xLEDHandle, char *ledSuspended ) {
   char s = *ledSuspended;
   if(s) {
     vTaskResume(xLEDHandle);
@@ -121,8 +126,16 @@ void Long_Clicked( char *ledSuspended ) {
   *ledSuspended = !s;
 }
 
-TaskHandle_t xButtonHandle = NULL;
-void Button_Task( void *_ ){
+typedef struct {
+  TaskHandle_t ledh;
+  xQueueHandle sc;
+} ButtonTaskArgs;
+
+void Button_Task( void *args ){
+  ButtonTaskArgs *buttonArgs = (ButtonTaskArgs *) args;
+  xQueueHandle sc = buttonArgs->sc;
+  TaskHandle_t xLEDHandle = buttonArgs->ledh;
+  const char clicked = 1;
   unsigned char counter = 0;
   char ledSuspended = 0;
   loop {
@@ -134,7 +147,7 @@ void Button_Task( void *_ ){
         }
         
         if(counter == 20) {
-          Long_Clicked(&ledSuspended);
+          Long_Clicked(xLEDHandle, &ledSuspended);
           counter++;
         }
 
@@ -142,7 +155,7 @@ void Button_Task( void *_ ){
       }
 
       if(20 > counter && counter > 0) {
-        Clicked(&state);
+        Clicked(sc, &clicked);
       }
 
       counter = 0;
@@ -181,8 +194,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-  xTaskCreate(LED_Task, "LED Task", 128, NULL, 3, &xLEDHandle);
-  xTaskCreate(Button_Task, "Button Task", 128, NULL, 1, &xButtonHandle);
+  TaskHandle_t xLEDHandle = NULL, xButtonHandle = NULL;
+
+  xQueueHandle xQueue = xQueueCreate(5, sizeof(char));
+  xTaskCreate(LED_Task, "LED Task", 128, xQueue, 3, &xLEDHandle);
+  ButtonTaskArgs buttonArgs = { .sc = xQueue, .ledh = xLEDHandle };
+  xTaskCreate(Button_Task, "Button Task", 128, &buttonArgs, 1, &xButtonHandle);
 
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
