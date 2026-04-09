@@ -23,6 +23,10 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "string.h"
+#include "stdlib.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,7 +61,23 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void UART_Test(void *pvParameters){
+  uint32_t Monitortimer = 400;
+  char MonitorTest[30];
+  char num[15];
+  int i = 0;
+  for(;;) {
+    memset(MonitorTest, '\0', sizeof(MonitorTest));
+    memset(num, '\0', sizeof(num));
+    itoa(i, num, 10);
+    strcat(num, " ");
+    sprintf(MonitorTest, "The point is %s\n\r", num);
+    HAL_UART_Transmit(&huart2, (uint8_t *)MonitorTest, strlen(MonitorTest), 0xffff);
+    vTaskDelay(Monitortimer);
+    Monitortimer += 1;
+    i += 1;
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -84,7 +104,8 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  TaskHandle_t xHandle=NULL;
+  xTaskCreate(UART_Test, "UART_Test", 128, NULL, 1, &xHandle);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
