@@ -28,6 +28,7 @@
 /* Standard includes. */
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /* Defining MPU_WRAPPERS_INCLUDED_FROM_API_FILE prevents task.h from redefining
 all the API functions to use the MPU wrappers.  That should only be done when
@@ -5211,4 +5212,61 @@ when performing module tests). */
 
 #endif
 
+
+void printTitle( UART_HandleTypeDef *pxhuart2, char buffer[] )
+{
+	sprintf(buffer, "|Name           |Priority(Base/actual) |pxStack    |pxTopOfStack  |State  |\n\r");
+	HAL_UART_Transmit(pxhuart2, (uint8_t *)buffer, strlen(buffer), 0xffff);
+}
+
+
+void printTCBInfo( UART_HandleTypeDef *pxhuart2, char buffer[], TCB_t *pxTCB, char taskState[] )
+{
+	sprintf(buffer, " %-15s %-2u/%-19u %p  %p     %s\n\r", pxTCB->pcTaskName, (unsigned int)pxTCB->uxPriority, (unsigned int)pxTCB->uxBasePriority, pxTCB->pxStack, pxTCB->pxTopOfStack, taskState);
+	HAL_UART_Transmit(pxhuart2, (uint8_t *)buffer, strlen(buffer), 0xffff);
+}
+
+
+void printTaskListInfo( UART_HandleTypeDef *pxhuart2, char buffer[], List_t *pxList, char taskState[] )
+{
+	ListItem_t *pxListItem = (ListItem_t *)listGET_HEAD_ENTRY(pxList);
+
+	while (pxListItem != (ListItem_t *)listGET_END_MARKER(pxList))
+	{
+		TCB_t *pxTCB = (TCB_t *)listGET_LIST_ITEM_OWNER(pxListItem);
+		printTCBInfo(pxhuart2, buffer, pxTCB, taskState);
+		pxListItem = (ListItem_t *)listGET_NEXT(pxListItem);
+	}
+}
+
+
+void Taskmonitor( void )
+{
+	/* Initialize string */
+	char Monitor_data[130];
+	memset(Monitor_data, '\0', sizeof(Monitor_data));
+
+	/* Stop scheduler */
+	/* Taskmonitor() will block when UART is transmitting data */
+	/* Scheduler will change list data when Taskmonitor() is blocked */
+	vTaskSuspendAll();
+
+	// Print title
+	printTitle(&huart2, Monitor_data);
+
+	/* pxReadyTasksLists */
+	for (UBaseType_t i = 0; i < configMAX_PRIORITIES; i++)
+	{
+		printTaskListInfo(&huart2, Monitor_data, &pxReadyTasksLists[i], "Ready");
+	}
+
+	// pxDelayedTaskList
+	printTaskListInfo(&huart2, Monitor_data, pxDelayedTaskList, "Blocked");
+
+	// pxOverflowDelayedTaskList
+	printTaskListInfo(&huart2, Monitor_data, pxOverflowDelayedTaskList, "Overflow");
+
+	// Resume scheduler
+	xTaskResumeAll();
+}
 

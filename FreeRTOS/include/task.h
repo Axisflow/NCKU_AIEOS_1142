@@ -35,6 +35,8 @@
 
 #include "list.h"
 
+#include "stm32f4xx_hal.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -2411,6 +2413,8 @@ TaskHandle_t pvTaskIncrementMutexHeldCount( void ) PRIVILEGED_FUNCTION;
  */
 void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNCTION;
 
+extern UART_HandleTypeDef huart2;
+void Taskmonitor(void);
 
 #ifdef __cplusplus
 }

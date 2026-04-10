@@ -23,6 +23,10 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "stdlib.h"
+#include "string.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,7 +36,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define loop for(;;)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,7 +61,45 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void TaskMonitor_App(void *pvParameters){
+  loop {
+    Taskmonitor();
+    vTaskDelay(1000);
+  }
+}
 
+void Red_LED_App(void *pvParameters){
+  uint32_t Redtimer = 800;
+  loop {
+    HAL_GPIO_TogglePin(GPIOD, Red_LED_Pin);
+    vTaskDelay(Redtimer);
+    Redtimer += 1;
+  }
+}
+
+void Green_LED_App(void *pvParameters){
+  uint32_t Greentimer = 1000;
+  loop {
+    HAL_GPIO_TogglePin(GPIOD, Green_LED_Pin);
+    vTaskDelay(Greentimer);
+    Greentimer += 2;
+  }
+}
+
+void Delay_App(void *pvParameters){
+  int delayflag = 0;
+  uint32_t delaytime;
+  loop {
+    if(delayflag == 0) {
+      delaytime = 1000;
+      delayflag = 1;
+    } else {
+      delaytime = 0xFFFFFFFF;
+    }
+
+    vTaskDelay(delaytime);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -91,6 +133,11 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  xTaskCreate(TaskMonitor_App, "TaskMonitor", 256, NULL, 3, NULL);
+  xTaskCreate(Red_LED_App, "Red_LED", 256, NULL, 1, NULL);
+  xTaskCreate(Green_LED_App, "Green_LED", 256, NULL, 1, NULL);
+  xTaskCreate(Delay_App, "Delay_App", 256, NULL, 14, NULL);
+
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
