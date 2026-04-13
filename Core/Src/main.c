@@ -105,7 +105,16 @@ uint8_t MEMS_Read(uint8_t addr)
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void LED_Task(void *pvParameters)
+{
+  loop {
+    if (MEMS_Read(LIS3DSH_WHO_AM_I_ADDR) == 0x3F) { // Check if the device ID is correct
+      HAL_GPIO_TogglePin(LED_Green_GPIO_Port, LED_Green_Pin); // Toggle Green LED
+    }
 
+    vTaskDelay(500 / portTICK_RATE_MS); // Delay for 500 ms
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -139,6 +148,8 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  xTaskCreate(LED_Task, "LED Task", 128, NULL, 1, NULL); // Create LED task
+
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
