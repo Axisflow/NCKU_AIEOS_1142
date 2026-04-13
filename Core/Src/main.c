@@ -73,7 +73,7 @@
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-
+xSemaphoreHandle motion_lock = NULL; // motion sensor interrupt semaphore
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -105,7 +105,49 @@ uint8_t MEMS_Read(uint8_t addr)
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void Green_LED_Task(void *pvParameters)
+{
+	loop {
+		/* Toggle the green LED */
+    HAL_GPIO_TogglePin(LED_Green_GPIO_Port, LED_Green_Pin);
+    uint32_t beginTime = HAL_GetTick();
+    while (HAL_GetTick() - beginTime < pdMS_TO_TICKS(100)) {
+      // Wait for 100 ms
+    }
+	}
+}
 
+void vHandlerTask( void *pvParameters )
+{
+	loop {
+		/* Take the semaphore */
+    if (xSemaphoreTake((xSemaphoreHandle)pvParameters, portMAX_DELAY) == pdTRUE) {
+			// semaphore was obtained
+			for (int i = 0; i < 10; i++) {  // 橘燈閃5次
+        HAL_GPIO_TogglePin(LED_Orange_GPIO_Port, LED_Orange_Pin);
+        uint32_t beginTime = HAL_GetTick();
+        while (HAL_GetTick() - beginTime < pdMS_TO_TICKS(200)) {
+          // Wait for 200 ms
+        }
+      }
+
+			/* reset interrupt register */
+      // Clear interrupt status by reading the output status register
+      MEMS_Read(LIS3DSH_OUTS1_ADDR);
+    }
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  /* 紅燈 toggle */
+  HAL_GPIO_TogglePin(LED_Red_GPIO_Port, LED_Red_Pin);
+
+  /* Give the semaphore to unblock the handler task */
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  xSemaphoreGiveFromISR(motion_lock, &xHigherPriorityTaskWoken);
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
 /* USER CODE END 0 */
 
 /**
@@ -139,6 +181,29 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  // 寫入 register //
+  MEMS_Write(LIS3DSH_CTRL_REG1_ADDR, 0x01); // Enable SM1
+  MEMS_Write(LIS3DSH_CTRL_REG3_ADDR, 0x48); // Enable interrupt on INT1 pin, active high
+  MEMS_Write(LIS3DSH_CTRL_REG4_ADDR, 0x67); // 100Hz data rate, XYZ axes enabled
+  MEMS_Write(LIS3DSH_CTRL_REG5_ADDR, 0x00); // No FIFO, no self-test
+  MEMS_Write(LIS3DSH_ST1_1_ADDR,     0x05);
+  MEMS_Write(LIS3DSH_ST1_2_ADDR,     0x11);
+  MEMS_Write(LIS3DSH_THRS1_1_ADDR,   0x55); // Set threshold for SM1
+  MEMS_Write(LIS3DSH_MASK1_B_ADDR,   0xFC); // Enable XYZ axis and sign masks (swap)
+  MEMS_Write(LIS3DSH_MASK1_A_ADDR,   0xFC); // Enable XYZ axis and sign masks (default)
+  MEMS_Write(LIS3DSH_SETT1_A_ADDR,   0x01); // Program flow can be modified by STOP and CONT commands
+
+  /* Create the semaphore */
+  motion_lock = xSemaphoreCreateBinary();
+  if (motion_lock == NULL) {
+    // Handle error: Semaphore creation failed
+    return -1; // Exit or handle as appropriate
+  }
+
+  /* task create */
+  xTaskCreate(Green_LED_Task, "Green  LED", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, NULL);
+  xTaskCreate(vHandlerTask, "Handler Task", configMINIMAL_STACK_SIZE, (void *)motion_lock, configMAX_PRIORITIES - 1, NULL);
+  
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
