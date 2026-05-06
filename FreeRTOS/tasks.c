@@ -736,6 +736,10 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 	{
 	TCB_t *pxNewTCB;
 	BaseType_t xReturn;
+    char name[20];
+    strcpy(name, pcName);
+    strcat(name, "\n\r");
+    HAL_UART_Transmit(&huart2, (uint8_t *)name, strlen(name), 0xffff);
 
 		/* If the stack grows down then allocate the stack then the TCB so the stack
 		does not grow into the TCB.  Likewise if the stack grows up then allocate

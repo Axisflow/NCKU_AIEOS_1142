@@ -34,6 +34,9 @@
 #endif
 
 #include "list.h"
+#include "stm32f4xx_hal.h"
+
+extern UART_HandleTypeDef huart2;
 
 #ifdef __cplusplus
 extern "C" {
