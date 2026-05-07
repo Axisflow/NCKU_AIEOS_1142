@@ -99,28 +99,38 @@ static size_t xFreeBytesRemaining = configADJUSTED_HEAP_SIZE;
 #define prvInsertBlockIntoFreeList( pxBlockToInsert )								\
 {																					\
 	BlockLink_t *pxIterator;														\
-	size_t xBlockSize;																\
 	BlockLink_t *pxPrevious, *pxBlockHolding = pxBlockToInsert;						\
-    /* TODO: Merge free blocks                                                    */\
-    /*                                                                            */\
-    /* HINT                                                                       */\
-    /* 1. You may need to use the `pxPrevious` pointer to keep trace of the       */\
-    /*    previous block.                                                         */\
-    /* 2. Because it is a macro, use `pxBlockHolding` instead of `pxBlockToInsert`*/\
-    /*    below, or you may encounter a problem.                                  */\
-    /* 3. To Keep the free blocks sorted in block size after merging, you may     */\
-    /*    want to take adjacent free blocks out.                                  */\
-	/* 4. Beware the start of the address when merge.							  */\
-    /*                                                                            */\
+	size_t xBlockSize = pxBlockHolding->xBlockSize;									\
+	uint8_t *pucBlockEnd = ( uint8_t * ) pxBlockHolding + xBlockSize;				\
                                                                                     \
-	xBlockSize = pxBlockHolding->xBlockSize;										\
+	for(																			\
+		 pxPrevious = &xStart, pxIterator = xStart.pxNextFreeBlock;					\
+		 pucBlockEnd != ( uint8_t * ) pxIterator && pxIterator != &xEnd &&			\
+		 ( uint8_t * ) pxIterator + pxIterator->xBlockSize !=						\
+		 ( uint8_t * ) pxBlockHolding;												\
+		 pxPrevious = pxIterator, pxIterator = pxIterator->pxNextFreeBlock			\
+	) {	/* There is nothing to do here - just iterate to the correct position. */ }	\
+																					\
+	/* Check if a suitable block was found */										\
+	if ( pucBlockEnd == ( uint8_t * ) pxIterator ) { /* Merge with Iterated Block */\
+		pxPrevious->pxNextFreeBlock = pxIterator->pxNextFreeBlock;					\
+		pxBlockHolding->xBlockSize += pxIterator->xBlockSize;						\
+		xBlockSize = 0;																\
+	} else if ( pxIterator != &xEnd ) {				 /* Merge with Holding Block */	\
+		pxPrevious->pxNextFreeBlock = pxIterator->pxNextFreeBlock;					\
+		pxIterator->xBlockSize += xBlockSize;										\
+		pxBlockHolding = pxIterator;												\
+		xBlockSize = 0;																\
+	}																				\
 																					\
 	/* Iterate through the list until a block is found that has a larger size */	\
 	/* than the block we are inserting. */											\
-	for( pxIterator = &xStart; pxIterator->pxNextFreeBlock->xBlockSize < xBlockSize; pxIterator = pxIterator->pxNextFreeBlock )	\
-	{																				\
-		/* There is nothing to do here - just iterate to the correct position. */	\
-	}																				\
+	for(																			\
+		 pxIterator = xBlockSize ? &xStart : pxPrevious,							\
+		 xBlockSize = pxBlockHolding->xBlockSize;									\
+		 pxIterator->pxNextFreeBlock->xBlockSize < xBlockSize;						\
+		 pxIterator = pxIterator->pxNextFreeBlock									\
+	) {	/* There is nothing to do here - just iterate to the correct position. */ }	\
 																					\
 	/* Update the list to include the block being inserted in the correct */		\
 	/* position. */																	\
