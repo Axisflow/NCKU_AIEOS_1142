@@ -294,11 +294,23 @@ uint8_t *pucAlignedHeap;
 
 void vPrintFreeList(void)
 {
-    /* TODO: implement this function
-     *
-     * Reference format
-     * > sprintf(data, "StartAddress heapSTRUCT_SIZE xBlockSize EndAddress\n\r");
-     * > sprintf(data, "%p         %d           %4d         %p\n\r", ...);
-     * > sprintf(data, "configADJUSTED_HEAP_SIZE: %0d xFreeBytesRemaining: %0d\n\r", ...);
-	 */
+	char data[80];
+	BlockLink_t *pxBlock = xStart.pxNextFreeBlock;
+
+	sprintf( data, "StartAddress heapSTRUCT_SIZE xBlockSize EndAddress\n\r" );
+	HAL_UART_Transmit( &huart2, ( uint8_t * )data, strlen( data ), HAL_MAX_DELAY );
+
+	while ( pxBlock != &xEnd ) {
+		sprintf(
+			data, "%p         %d           %d         %p\n\r", ( void * ) pxBlock, heapSTRUCT_SIZE,
+			pxBlock->xBlockSize, ( void * ) ( ( uint8_t * ) pxBlock + pxBlock->xBlockSize )
+		);
+
+		HAL_UART_Transmit( &huart2, ( uint8_t * ) data, strlen( data ), HAL_MAX_DELAY );
+
+		pxBlock = pxBlock->pxNextFreeBlock;
+	}
+
+	sprintf( data, "configADJUSTED_HEAP_SIZE: %0d | xFreeBytesRemaining: %0d\n\r", configADJUSTED_HEAP_SIZE, xFreeBytesRemaining );
+	HAL_UART_Transmit( &huart2, ( uint8_t * ) data, strlen( data ), HAL_MAX_DELAY );
 }
