@@ -24,6 +24,8 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "File_Handling.h"
+#include "waveplayer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +54,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+extern AUDIO_PLAYBACK_StateTypeDef AudioState;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,7 +71,27 @@ static void MX_I2S3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void AudioPlayerTask(void *pvParameters){
+	int IsFinished = 0;
+	AUDIO_PLAYER_Start(0);
+	while (!IsFinished)
+  {
+		AUDIO_PLAYER_Process(pdTRUE);
 
+		if (AudioState == AUDIO_STATE_STOP)
+		{
+			IsFinished = 1;
+		}
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == B1_Pin)
+  {
+		AudioState = AUDIO_STATE_NEXT;
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -108,6 +130,8 @@ int main(void)
   MX_I2C1_Init();
   MX_I2S3_Init();
   /* USER CODE BEGIN 2 */
+  Mount_SD();
+  xTaskCreate(AudioPlayerTask, "AudioPlayer", configMINIMAL_STACK_SIZE << 2, NULL, tskIDLE_PRIORITY + 3, NULL);
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
