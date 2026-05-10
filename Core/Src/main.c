@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "extprintf.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -69,7 +70,17 @@ static void MX_I2S3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void SDCARD_Test(void *pvParameters){
+	uart2printf("SDCARDTest START!\r\n");
+	FATFS fs;
 
+	FRESULT res = f_mount(&fs, "", 1);
+	if (res != FR_OK) {
+	  uart2printf("SD mount failed with error code: %d\r\n", res);
+	} else {
+	  uart2printf("SD mounted!\r\n");
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -108,6 +119,7 @@ int main(void)
   MX_I2C1_Init();
   MX_I2S3_Init();
   /* USER CODE BEGIN 2 */
+  xTaskCreate(SDCARD_Test, "SDCARD_Test", configMINIMAL_STACK_SIZE << 1, NULL, tskIDLE_PRIORITY + 1, NULL);
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
