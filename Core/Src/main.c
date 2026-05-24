@@ -24,18 +24,41 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "extprintf.h"
+#include "string.h"
 #include "File_Handling.h"
 #include "waveplayer.h"
+#include "semphr.h"
+#include "queue.h"
+#include "stdarg.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum {
+	PLAYBACK_CONTROL,
+	TRACK_SWITCHING,
+	VOLUME_ADJUST
+} SystemState;
 
+typedef enum {
+	NO_PRESS,
+	SINGLE_PRESS,
+	LONG_PRESS,
+	DOUBLE_PRESS
+} eButtonEvent;
+
+typedef struct {
+	char message[128];
+} LogMessage;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define loop for(;;)
 
+#define AUDIO_EXIT_NOTIFY	(1UL << 0)
+#define AUDIO_EXITED_NOTIFY (1UL << 1)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,6 +78,12 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 extern AUDIO_PLAYBACK_StateTypeDef AudioState;
+TaskHandle_t buttonTaskHandle;
+bool initialized  = pdFALSE;
+SystemState currentState = PLAYBACK_CONTROL;
+bool single_press = pdFALSE;
+SemaphoreHandle_t fatfsMutex;
+QueueHandle_t logQueue;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,12 +100,338 @@ static void MX_I2S3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void LogOperation(const char *format, ...)
+{
+	LogMessage msg;
+	va_list args;
+	va_start(args, format);
+	vsnprintf(msg.message, sizeof(msg.message), format, args);
+	va_end(args);
+	if (xQueueSend(logQueue, &msg, pdMS_TO_TICKS(100)) != pdPASS)
+  {
+		uart2printf("Failed to send log message!\r\n");
+	}
+}
+
+void PrintUARTFCloseError(FRESULT fr)
+{
+  switch (fr) {
+    case FR_OK:
+      //uart2printf("File closed successfully.\r\n");
+      break;
+    case FR_DISK_ERR:
+      uart2printf("Disk error occurred while closing the file.\r\n");
+      break;
+    case FR_INT_ERR:
+      uart2printf("Internal error occurred while closing the file.\r\n");
+      break;
+    case FR_NOT_READY:
+      uart2printf("Physical drive cannot work while closing the file.\r\n");
+      break;
+    case FR_INVALID_OBJECT:
+      uart2printf("Invalid file object while closing the file.\r\n");
+      break;
+    default:
+      uart2printf("Unknown error occurred while closing the file (Error code: %d).\r\n", fr);
+      break;
+  }
+}
+
+void PrintLogFile(void)
+{
+	FIL logFile;
+	FRESULT fr;
+	UINT br;
+	char buffer[128];
+	xSemaphoreTake(fatfsMutex, portMAX_DELAY);
+	fr = f_open(&logFile, "log.txt", FA_READ);
+	if (fr != FR_OK)
+  {
+		uart2printf("Failed to open log.txt (Error: %d)\r\n", fr);
+		xSemaphoreGive(fatfsMutex);
+		return;
+	}
+
+	uart2printf("Log file contents:\r\n");
+
+	do
+  {
+		fr = f_read(&logFile, buffer, sizeof(buffer) - 1, &br);
+		if (fr != FR_OK)
+    {
+			uart2printf("Error reading log.txt (Error: %d)\r\n", fr);
+			break;
+		}
+
+		buffer[br] = '\0';
+		uart2printf("%s", buffer);
+	} while (br == sizeof(buffer) - 1);
+
+	PrintUARTFCloseError(f_close(&logFile));
+	xSemaphoreGive(fatfsMutex);
+}
+
+void LogTask(void *pvParameters)
+{
+	FIL logFile;
+	FRESULT fr;
+	UINT bw;
+	LogMessage logMsg;
+	bool fileOpened = pdFALSE;
+
+	xSemaphoreTake(fatfsMutex, portMAX_DELAY);
+	fr = f_open(&logFile, "log.txt", FA_CREATE_ALWAYS | FA_WRITE);
+	if (fr == FR_OK)
+  {
+	  PrintUARTFCloseError(f_close(&logFile));
+		uart2printf("Log file cleared.\r\n");
+	}
+  else
+  {
+		uart2printf("Failed to clear log file, error = %d\r\n", fr);
+	}
+
+	xSemaphoreGive(fatfsMutex);
+
+	loop
+  {
+		if (xQueueReceive(logQueue, &logMsg, portMAX_DELAY) == pdPASS)
+    {
+			xSemaphoreTake(fatfsMutex, portMAX_DELAY);
+			if(!fileOpened)
+      {
+				fr = f_open(&logFile, "log.txt", FA_OPEN_APPEND | FA_WRITE);
+				if (fr != FR_OK)
+        {
+					uart2printf("LogTask: Failed to open log.txt, error = %d\r\n", fr);
+					xSemaphoreGive(fatfsMutex);
+					continue;
+				}
+
+				fileOpened = pdTRUE;
+			}
+
+			fr = f_write(&logFile, logMsg.message, strlen(logMsg.message), &bw);
+			if (fr == FR_OK)
+      {
+				f_sync(&logFile);
+				uart2printf("LogTask: Wrote log entry.\r\n");
+	      PrintUARTFCloseError(f_close(&logFile));
+				fileOpened = pdFALSE;
+				xSemaphoreGive(fatfsMutex);
+				PrintLogFile();
+			}
+      else
+      {
+				uart2printf("LogTask: f_write error: %d\r\n", fr);
+				xSemaphoreGive(fatfsMutex);
+			}
+		}
+	}
+}
+
+bool buttonState()
+{
+  static const uint32_t DEBOUNCE_MILLIS = 50;
+  static bool buttonstate = pdFALSE;
+  static uint32_t buttonstate_ts = 0;
+
+  uint32_t now = HAL_GetTick();
+
+  if (!initialized)
+  {
+    buttonstate = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET;
+    buttonstate_ts = now;
+    initialized = pdTRUE;
+  }
+
+  if (now - buttonstate_ts > DEBOUNCE_MILLIS)
+  {
+    bool current_state = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET);
+    if (buttonstate != current_state)
+    {
+      buttonstate = current_state;
+      buttonstate_ts = now;
+    }
+  }
+  return buttonstate;
+}
+
+eButtonEvent getButtonEvent()
+{
+  static const uint32_t DOUBLE_GAP_MILLIS_MAX = 250;
+  static const uint32_t LONG_MILLIS_MIN = 800;
+
+  static uint32_t button_down_ts = 0;
+  static uint32_t button_up_ts = 0;
+  static bool double_pending = pdFALSE;
+  static bool long_press_pending = pdFALSE;
+  static bool button_down = pdFALSE;
+  static bool long_press_fired = pdFALSE;
+
+  static eButtonEvent pending_event = NO_PRESS;
+  uint32_t now = HAL_GetTick();
+
+  /*Determine whether it's a single press, double press, or long press.*/
+  bool current_button_state = buttonState();
+  if (current_button_state && !button_down) {
+    // Button just went down
+    button_down = pdTRUE;
+    button_down_ts = now;
+    long_press_pending = pdTRUE;
+    long_press_fired = pdFALSE;
+  } else if (!current_button_state && button_down) {
+    // Button just went up
+    button_down = pdFALSE;
+    button_up_ts = now;
+
+    if (long_press_pending && !long_press_fired && (now - button_down_ts >= LONG_MILLIS_MIN)) {
+      pending_event = LONG_PRESS;
+      long_press_fired = pdTRUE;
+      double_pending = pdFALSE; // Cancel double press if long press is detected
+    } else if (double_pending && (now - button_up_ts <= DOUBLE_GAP_MILLIS_MAX)) {
+      pending_event = DOUBLE_PRESS;
+      double_pending = pdFALSE; // Reset double press state
+    } else {
+      double_pending = pdTRUE; // Wait to see if a second press arrives
+    }
+  } else if (double_pending && (now - button_up_ts > DOUBLE_GAP_MILLIS_MAX)) {
+    // Time window for double press has passed, it's a single press
+    pending_event = SINGLE_PRESS;
+    double_pending = pdFALSE; // Reset double press state
+  }
+
+  eButtonEvent event_to_return = pending_event;
+  pending_event = NO_PRESS;
+  return event_to_return;
+}
+
+void ButtonTask(void *pvParameters)
+{
+	loop {
+		xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(20));
+
+    if (AudioState == AUDIO_STATE_PLAY)
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_SET);
+    else
+      HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
+
+    if (currentState == TRACK_SWITCHING)
+      HAL_GPIO_WritePin(ORANGE_LED_GPIO_Port, ORANGE_LED_Pin, GPIO_PIN_SET);
+    else
+      HAL_GPIO_WritePin(ORANGE_LED_GPIO_Port, ORANGE_LED_Pin, GPIO_PIN_RESET);
+
+    if (currentState == VOLUME_ADJUST)
+      HAL_GPIO_WritePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin, GPIO_PIN_SET);
+    else
+      HAL_GPIO_WritePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin, GPIO_PIN_RESET);
+
+		eButtonEvent event = getButtonEvent();
+    if (event == SINGLE_PRESS)
+    {
+      HAL_GPIO_WritePin(ORANGE_LED_GPIO_Port, ORANGE_LED_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
+    }
+    else if (event == DOUBLE_PRESS)
+    {
+      HAL_GPIO_WritePin(ORANGE_LED_GPIO_Port, ORANGE_LED_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_SET);
+    }
+    else
+    {
+      HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
+    }
+
+		if (event != NO_PRESS)
+    {
+			switch (currentState)
+      {
+				case PLAYBACK_CONTROL:
+					if (event == SINGLE_PRESS)
+          {
+						uart2printf("PLAYBACK_CONTROL: Single Press Detected. Toggling Play/Pause.\r\n");
+
+						if (AudioState == AUDIO_STATE_PLAY)
+            {
+							LogOperation("AUDIO_PAUSE\r\n");
+							AudioState = AUDIO_STATE_PAUSE;
+						}
+            else if (AudioState == AUDIO_STATE_WAIT)
+            {
+							LogOperation("AUDIO_RESUME\r\n");
+							AudioState = AUDIO_STATE_RESUME;
+						}
+					}
+					else if (event == DOUBLE_PRESS)
+          {
+						uart2printf("PLAYBACK_CONTROL: Double Press Detected. Entering Track Switching Mode.\r\n");
+						currentState = TRACK_SWITCHING;
+					}
+					else if (event == LONG_PRESS)
+          {
+						uart2printf("PLAYBACK_CONTROL: Long Press Detected. Entering Volume Adjust Mode.\r\n");
+						currentState = VOLUME_ADJUST;
+					}
+					break;
+				case TRACK_SWITCHING:
+					if (event == SINGLE_PRESS)
+          {
+						uart2printf("TRACK_SWITCHING: Single Press Detected. Previous Track.\r\n");
+						LogOperation("PREVIOUS_SONG\r\n");
+						AudioState = AUDIO_STATE_PREVIOUS;
+					}
+					else if(event == DOUBLE_PRESS)
+          {
+						uart2printf("TRACK_SWITCHING: Double Press Detected. Next Track.\r\n");
+						LogOperation("NEXT_SONG\r\n");
+						AudioState = AUDIO_STATE_NEXT;
+					}
+					else if (event == LONG_PRESS)
+          {
+						uart2printf("TRACK_SWITCHING: Long Press Detected. Exiting Track Switching Mode.\r\n");
+						currentState = PLAYBACK_CONTROL;
+					}
+					break;
+				case VOLUME_ADJUST:
+					if(event == SINGLE_PRESS)
+          {
+						uart2printf("VOLUME_ADJUST: Single Press Detected. Volume Down.\r\n");
+						LogOperation("VOLUME_DOWN\r\n");
+						AudioState = AUDIO_STATE_VOLUME_DOWN;
+					}
+					else if(event == DOUBLE_PRESS)
+          {
+						uart2printf("VOLUME_ADJUST: Double Press Detected. Volume Up.\r\n");
+						LogOperation("VOLUME_UP\r\n");
+						AudioState = AUDIO_STATE_VOLUME_UP;
+					}
+					else if(event == LONG_PRESS)
+          {
+						uart2printf("VOLUME_ADJUST: Long Press Detected. Exiting Volume Adjust Mode.\r\n");
+						currentState = PLAYBACK_CONTROL;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+}
+
 void AudioPlayerTask(void *pvParameters){
 	int IsFinished = 0;
+	xSemaphoreTake(fatfsMutex, portMAX_DELAY);
 	AUDIO_PLAYER_Start(0);
+	xSemaphoreGive(fatfsMutex);
 	while (!IsFinished)
   {
+		xSemaphoreTake(fatfsMutex, portMAX_DELAY);
 		AUDIO_PLAYER_Process(pdTRUE);
+		xSemaphoreGive(fatfsMutex);
 
 		if (AudioState == AUDIO_STATE_STOP)
 		{
@@ -86,10 +441,13 @@ void AudioPlayerTask(void *pvParameters){
 	}
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if(GPIO_Pin == B1_Pin)
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == B1_Pin)
   {
-		AudioState = AUDIO_STATE_NEXT;
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		vTaskNotifyGiveFromISR(buttonTaskHandle, &xHigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
 }
 /* USER CODE END 0 */
@@ -131,7 +489,19 @@ int main(void)
   MX_I2S3_Init();
   /* USER CODE BEGIN 2 */
   Mount_SD();
-  xTaskCreate(AudioPlayerTask, "AudioPlayer", configMINIMAL_STACK_SIZE << 2, NULL, tskIDLE_PRIORITY + 3, NULL);
+  fatfsMutex = xSemaphoreCreateMutex();
+  if (fatfsMutex == NULL){
+  	uart2printf("Failed to create fatfsMutex!\r\n");
+  }
+
+  logQueue = xQueueCreate(10, sizeof(LogMessage));
+  if (logQueue == NULL){
+  	uart2printf("Failed to create logQueue!\r\n");
+  }
+
+  xTaskCreate(LogTask, "LogTask", configMINIMAL_STACK_SIZE << 2, NULL, tskIDLE_PRIORITY + 3, NULL);
+  xTaskCreate(ButtonTask, "ButtonTask", configMINIMAL_STACK_SIZE << 1, NULL, tskIDLE_PRIORITY + 2, &buttonTaskHandle);
+  xTaskCreate(AudioPlayerTask, "AudioPlayerTask", configMINIMAL_STACK_SIZE << 2, NULL, tskIDLE_PRIORITY + 3, NULL);
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   /* USER CODE END 2 */
 
@@ -376,7 +746,8 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GREEN_LED_Pin|ORANGE_LED_Pin|RED_LED_Pin|BLUE_LED_Pin
+                          |Audio_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : CS_I2C_SPI_Pin */
   GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -435,6 +806,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
   HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : GREEN_LED_Pin ORANGE_LED_Pin RED_LED_Pin BLUE_LED_Pin
+                           Audio_RST_Pin */
+  GPIO_InitStruct.Pin = GREEN_LED_Pin|ORANGE_LED_Pin|RED_LED_Pin|BLUE_LED_Pin
+                          |Audio_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
   /*Configure GPIO pin : VBUS_FS_Pin */
   GPIO_InitStruct.Pin = VBUS_FS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -448,13 +828,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : Audio_RST_Pin */
-  GPIO_InitStruct.Pin = Audio_RST_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(Audio_RST_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : OTG_FS_OverCurrent_Pin */
   GPIO_InitStruct.Pin = OTG_FS_OverCurrent_Pin;
