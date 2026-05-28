@@ -3,7 +3,9 @@
 #include "stm32f407xx.h"
 #include "drivers.h"
 
-const LED_Config_t LED_Configs[4] =
+#define LED_COUNT 4
+
+const LED_Config_t LED_Configs[LED_COUNT] =
 {
 	{
 		.name = "GreenLED",
@@ -167,7 +169,7 @@ void initialize_LED(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-	for (uint8_t i = 0; i < 4; ++i)
+	for (uint8_t i = 0; i < LED_COUNT; ++i)
 	{
 		if (strcmp(LED_Configs[i].GPIO_Port, "A") == 0)
 		{
