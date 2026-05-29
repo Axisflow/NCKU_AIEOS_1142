@@ -1,7 +1,6 @@
 #ifndef VFS_H
 #define VFS_H
 
-#include <unistd.h>
 #include <stddef.h>
 #include <limits.h>
 
@@ -18,6 +17,8 @@ struct file {
     // Private data for the file implementation (e.g., a pointer to a file descriptor, a directory iterator, etc.)
     void *private_data;
 };
+
+typedef long long __vf_ssize_t;
 
 #ifndef loff_t
 typedef long long loff_t;
@@ -52,8 +53,8 @@ typedef enum {
 } vf_result_t;
 
 vf_result_t vf_open(struct file *file, const char *path, unsigned int flags);
-ssize_t vf_read(struct file *file, char *buf, size_t btr);
-ssize_t vf_write(struct file *file, const char *buf, size_t btw);
+__vf_ssize_t vf_read(struct file *file, char *buf, size_t btr);
+__vf_ssize_t vf_write(struct file *file, const char *buf, size_t btw);
 loff_t vf_llseek(struct file *file, loff_t offset, int whence);
 vf_result_t vf_fsync(struct file *file, int datasync);
 poll_t vf_poll(struct file *file, struct poll_table_struct *pt);
@@ -71,10 +72,10 @@ struct file_operations {
     int (*open)(struct file *file, const char *path);
 
     // Read from a file. Returns the number of bytes read, or a negative error code.
-    ssize_t (*read)(struct file *file, void *buf, size_t count);
+    __vf_ssize_t (*read)(struct file *file, void *buf, size_t count);
 
     // Write to a file. Returns the number of bytes written, or a negative error code.
-    ssize_t (*write)(struct file *file, const void *buf, size_t count);
+    __vf_ssize_t (*write)(struct file *file, const void *buf, size_t count);
 
     // Change the file position. Returns the new file position, or a negative error code.
     loff_t (*llseek)(struct file *file, loff_t offset, int whence);

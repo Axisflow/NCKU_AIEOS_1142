@@ -101,7 +101,7 @@ vf_result_t vf_close(struct file *fp) {
 }
 
 
-ssize_t vf_read(struct file *fp, char *buf, size_t btr) {
+__vf_ssize_t vf_read(struct file *fp, char *buf, size_t btr) {
     if (!fp) {
         return VF_ERROR; // Invalid file
     }
@@ -113,7 +113,7 @@ ssize_t vf_read(struct file *fp, char *buf, size_t btr) {
     return fp->fs->fops->read(fp, buf, btr);
 }
 
-ssize_t vf_write(struct file *fp, const char *buf, size_t btw) {
+__vf_ssize_t vf_write(struct file *fp, const char *buf, size_t btw) {
     if (!fp) {
         return VF_ERROR; // Invalid file
     }
