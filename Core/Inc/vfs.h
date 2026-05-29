@@ -127,7 +127,7 @@ typedef vf_result_t vfs_result_t;
 vfs_result_t vfs_mount(const struct file_system *fs);
 
 // Look up a file system by its mount point or its subdirectories. Returns NULL if not found.
-struct file_system *vfs_lookup(const char *path);
+const struct file_system *vfs_lookup(const char *path);
 
 // Unmount a file system from the VFS
 vfs_result_t vfs_unmount(const struct file_system *fs);

@@ -7,7 +7,7 @@
 #include "vfs.h"
 
 struct __vfs_hlist {
-    struct file_system *fs;
+    const struct file_system *fs;
     struct __vfs_hlist *next;
 };
 
@@ -20,7 +20,7 @@ vf_result_t __valid_path(const char *path) {
     return VF_SUCCESS; // Valid path
 }
 
-vfs_result_t vfs_mount(struct file_system *fs) {
+vfs_result_t vfs_mount(const struct file_system *fs) {
     if (!fs || !fs->mount_point || __valid_path(fs->mount_point) != VF_SUCCESS) {
         return VF_INVALID; // Invalid parameters
     }
@@ -41,7 +41,7 @@ vfs_result_t vfs_mount(struct file_system *fs) {
     return VF_SUCCESS; // Mounted successfully
 }
 
-vfs_result_t vfs_unmount(struct file_system *fs) {
+vfs_result_t vfs_unmount(const struct file_system *fs) {
     if (!fs) {
         return VF_INVALID; // Invalid parameters
     }
@@ -58,7 +58,7 @@ vfs_result_t vfs_unmount(struct file_system *fs) {
     return VF_NOT_FOUND; // File system not found
 }
 
-struct file_system *vfs_lookup(const char *path) {
+const struct file_system *vfs_lookup(const char *path) {
     if (__valid_path(path) != VF_SUCCESS) {
         return NULL; // Invalid path
     }
