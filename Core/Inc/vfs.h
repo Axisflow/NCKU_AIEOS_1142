@@ -1,6 +1,7 @@
 #ifndef VFS_H
 #define VFS_H
 
+#include <unistd.h>
 #include <stddef.h>
 #include <limits.h>
 
@@ -17,10 +18,6 @@ struct file {
     // Private data for the file implementation (e.g., a pointer to a file descriptor, a directory iterator, etc.)
     void *private_data;
 };
-
-#ifndef ssize_t
-typedef long long ssize_t;
-#endif
 
 #ifndef loff_t
 typedef long long loff_t;
