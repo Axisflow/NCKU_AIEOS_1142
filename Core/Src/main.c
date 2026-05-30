@@ -24,6 +24,8 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "vfs_fatfs.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -97,7 +99,10 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  struct fat_fs fs;
+  mount_fatfs(&fs, "/", 0);
   vTaskStartScheduler();
+  unmount_fatfs(&fs);
   /* USER CODE END 2 */
 
   /* Infinite loop */
