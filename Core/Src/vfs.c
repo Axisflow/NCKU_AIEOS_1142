@@ -73,7 +73,7 @@ const struct file_system *vfs_lookup(const char *path) {
 }
 
 vf_result_t vf_open(struct file *fp, const char *path, unsigned int flags) {
-    struct file_system *mounted = vfs_lookup(path);
+    const struct file_system *mounted = vfs_lookup(path);
     if (!mounted) {
         return VF_NOT_FOUND; // Not found
     }
@@ -93,11 +93,13 @@ vf_result_t vf_close(struct file *fp) {
         return VF_ERROR; // Invalid file
     }
 
+    int result = VF_SUCCESS;
     if (fp->fs->fops && fp->fs->fops->close) {
-        return fp->fs->fops->close(fp);
+        result = fp->fs->fops->close(fp);
     }
 
-    return VF_SUCCESS; // Closed successfully
+    fp->fs = NULL; // Clear the file system reference
+    return result; // Closed successfully
 }
 
 
@@ -149,7 +151,7 @@ vf_result_t vf_fsync(struct file *file, int datasync) {
     return file->fs->fops->fsync(file, 0, OFFSET_MAX, datasync);
 }
 
-poll_t vf_poll(struct file *file, struct poll_table_struct *pt) {
+poll_t vf_poll(struct file *file, poll_t events, int timeout_ms) {
     if (!file) {
         return POLLNVAL; // Invalid file
     }
@@ -158,10 +160,14 @@ poll_t vf_poll(struct file *file, struct poll_table_struct *pt) {
         return POLLERR; // No poll operation defined
     }
 
-    return file->fs->fops->poll(file, pt);
+    if ((events & POLLHUP) && file->fs->mount_point == NULL) {
+        return POLLHUP | POLLERR; // Hang up and error if the file system is unmounted
+    }
+
+    return file->fs->fops->poll(file, events, timeout_ms);
 }
 
-loff_t vf_readdir (struct file *file, size_t *count, char *path, const size_t path_max_len) {
+loff_t vf_readdir (struct file *file, char *path, size_t path_max_len) {
     if (!file) {
         return (loff_t) VF_ERROR; // Invalid file
     }
@@ -170,11 +176,11 @@ loff_t vf_readdir (struct file *file, size_t *count, char *path, const size_t pa
         return (loff_t) VF_INVALID; // No readdir operation defined
     }
 
-    return file->fs->fops->iterate_shared(file, count, path, path_max_len);
+    return file->fs->fops->iterate_shared(file, path, path_max_len);
 }
 
 vf_result_t vf_mkdir(const char *path, const char *name, umode_t mode) {
-    struct file_system *mounted = vfs_lookup(path);
+    const struct file_system *mounted = vfs_lookup(path);
     if (!mounted) {
         return VF_NOT_FOUND; // Not found
     }
@@ -183,11 +189,11 @@ vf_result_t vf_mkdir(const char *path, const char *name, umode_t mode) {
         return VF_INVALID; // No mkdir operation defined
     }
 
-    return mounted->nops->create(path, name, mode);
+    return mounted->nops->create(mounted, path, name, mode);
 }
 
 vf_result_t vf_unlink(const char *path) {
-    struct file_system *mounted = vfs_lookup(path);
+    const struct file_system *mounted = vfs_lookup(path);
     if (!mounted) {
         return VF_NOT_FOUND; // Not found
     }
@@ -196,11 +202,11 @@ vf_result_t vf_unlink(const char *path) {
         return VF_INVALID; // No unlink operation defined
     }
 
-    return mounted->nops->unlink(path);
+    return mounted->nops->unlink(mounted, path);
 }
 
 vf_result_t vf_rmdir(const char *path) {
-    struct file_system *mounted = vfs_lookup(path);
+    const struct file_system *mounted = vfs_lookup(path);
     if (!mounted) {
         return VF_NOT_FOUND; // Not found
     }
@@ -209,5 +215,5 @@ vf_result_t vf_rmdir(const char *path) {
         return VF_INVALID; // No rmdir operation defined
     }
 
-    return mounted->nops->rmdir(path);
+    return mounted->nops->rmdir(mounted, path);
 }

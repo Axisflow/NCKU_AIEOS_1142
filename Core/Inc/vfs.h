@@ -28,22 +28,11 @@ typedef long long loff_t;
 
 typedef unsigned int poll_t;
 
-#define POLLIN   (1L << 0)
-#define POLLOUT  (1L << 1)
-#define POLLERR  (1L << 2)
-#define POLLHUP  (1L << 3)
-#define POLLNVAL (1L << 4)
-
-struct poll_table_struct {
-    // The events the caller is interested in (e.g., POLLIN, POLLOUT, etc.)
-    unsigned int events;
-
-    // The events that occurred (set by the poll implementation)
-    unsigned int revents;
-
-    // A timeout in milliseconds for the poll operation (0 for no timeout, -1 for infinite timeout)
-    int timeout_ms;
-};
+#define POLLIN   (1L << 0) // Data other than high-priority data may be read without blocking (e.g., the file is not empty, or the device has data to read)
+#define POLLOUT  (1L << 1) // Writing is now possible (e.g., the file is not full, or the device is ready for writing)
+#define POLLERR  (1L << 2) // An error occurred
+#define POLLHUP  (1L << 3) // The file descriptor is closed
+#define POLLNVAL (1L << 4) // The file descriptor is invalid
 
 typedef enum {
     VF_SUCCESS = 0,
@@ -57,8 +46,8 @@ __vf_ssize_t vf_read(struct file *file, char *buf, size_t btr);
 __vf_ssize_t vf_write(struct file *file, const char *buf, size_t btw);
 loff_t vf_llseek(struct file *file, loff_t offset, int whence);
 vf_result_t vf_fsync(struct file *file, int datasync);
-poll_t vf_poll(struct file *file, struct poll_table_struct *pt);
-loff_t vf_readdir (struct file *file, size_t *count, char *path, const size_t path_max_len);
+poll_t vf_poll(struct file *file, poll_t events, int timeout_ms);
+loff_t vf_readdir (struct file *file, char *path, size_t path_max_len);
 vf_result_t vf_close(struct file *file);
 
 typedef unsigned int umode_t;
@@ -72,10 +61,10 @@ struct file_operations {
     int (*open)(struct file *file, const char *path);
 
     // Read from a file. Returns the number of bytes read, or a negative error code.
-    __vf_ssize_t (*read)(struct file *file, void *buf, size_t count);
+    __vf_ssize_t (*read)(struct file *file, char *buf, size_t count);
 
     // Write to a file. Returns the number of bytes written, or a negative error code.
-    __vf_ssize_t (*write)(struct file *file, const void *buf, size_t count);
+    __vf_ssize_t (*write)(struct file *file, const char *buf, size_t count);
 
     // Change the file position. Returns the new file position, or a negative error code.
     loff_t (*llseek)(struct file *file, loff_t offset, int whence);
@@ -84,10 +73,10 @@ struct file_operations {
     int (*fsync) (struct file *file, loff_t start, loff_t end, int datasync);
 
     // Poll for events on the file. Returns a bitmask of events that occurred, or a negative error code.
-    poll_t (*poll)(struct file *file, struct poll_table_struct *pt);
+    poll_t (*poll)(struct file *file, poll_t events, int timeout_ms);
 
-    // Iterate over directory entries. Returns the new file position, or a negative error code.
-    loff_t (*iterate_shared) (struct file *file, size_t *count, char *path, const size_t path_max_len);
+    // Iterate over directory entries. Returns the next entry position, or a negative error code.
+    loff_t (*iterate_shared) (struct file *file, char *buf, size_t btr);
 
     // Close a file (and release any associated or [m]allocated resources). Returns 0 on success, or a negative error code.
     int (*close)(struct file *file);
@@ -95,18 +84,18 @@ struct file_operations {
 
 struct node_operations {
     // Create a directory. Returns 0 on success, or a negative error code.
-    int (*create)(const char *path, const char *name, umode_t mode);
+    int (*create)(const struct file_system *fs, const char *path, const char *name, umode_t mode);
 
     // Remove a file. Returns 0 on success, or a negative error code.
-    int (*unlink)(const char *path);
+    int (*unlink)(const struct file_system *fs, const char *path);
 
     // Remove a directory. Returns 0 on success, or a negative error code.
-    int (*rmdir)(const char *path);
+    int (*rmdir)(const struct file_system *fs, const char *path);
 };
 
 struct file_system {
     // the name of the file system, e.g., "FATFS", "DEVFS", etc.
-    const char name[16];
+    char name[16];
 
     // the mount point for this file system, e.g., "/fatfs", "/dev", etc.
     const char *mount_point;
@@ -118,7 +107,7 @@ struct file_system {
     const struct file_operations *fops;
 
     // private data for the file system implementation
-    void *private_data;
+    struct {} private_data;
 };
 
 typedef vf_result_t vfs_result_t;
