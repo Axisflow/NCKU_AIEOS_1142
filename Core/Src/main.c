@@ -49,7 +49,7 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+struct fat_fs fs;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,8 +99,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  struct fat_fs fs;
-  mount_fatfs(&fs, "/", 0);
+  mount_fatfs(&fs, "/fatfs");
   vTaskStartScheduler();
   unmount_fatfs(&fs);
   /* USER CODE END 2 */

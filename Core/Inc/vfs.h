@@ -107,7 +107,6 @@ struct file_system {
     const struct file_operations *fops;
 
     // private data for the file system implementation
-    struct {} private_data;
 };
 
 typedef vf_result_t vfs_result_t;

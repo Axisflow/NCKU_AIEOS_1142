@@ -9,17 +9,13 @@
 
 // Inherit from 'struct file_system' and add private data for FATFS
 struct fat_fs {
-    char name[16];
-    const char *mount_point;
-    const struct node_operations *nops;
-    const struct file_operations *fops;
-    struct {
-        FATFS fs;
-        SemaphoreHandle_t mutex;
-    } private_data;
+    struct file_system base; // Base file system structure
+
+    FATFS fs;
+    SemaphoreHandle_t mutex;
 };
 
-int mount_fatfs(struct fat_fs *fs, const char *mount_point, unsigned char options);
+int mount_fatfs(struct fat_fs *fs, const char *mount_point);
 int unmount_fatfs(struct fat_fs *fs);
 
 int fatfs_open(struct file *file, const char *path);
