@@ -31,7 +31,7 @@ int mount_fatfs(struct fat_fs *fs, const char *mount_point)
         return -1; // Failed to create mutex
     }
 
-    FRESULT res = f_mount(&fs->fs, mount_point, 1);
+    FRESULT res = f_mount(&fs->fs, "", 1);
     if (res != FR_OK) {
         vSemaphoreDelete(fs->mutex);
         return -res; // Failed to mount file system
@@ -45,7 +45,7 @@ int mount_fatfs(struct fat_fs *fs, const char *mount_point)
     xSemaphoreTake(fs->mutex, portMAX_DELAY); // Ensure no other thread is using the file system
     vf_result_t vfs_res = vfs_mount((const struct file_system *) fs);
     if (vfs_res != VF_SUCCESS) {
-        f_mount(NULL, mount_point, 0); // Unmount the file system
+        f_mount(NULL, "", 0); // Unmount the file system
         vSemaphoreDelete(fs->mutex);
         return vfs_res; // Failed to mount to VFS
     }
@@ -67,7 +67,7 @@ int unmount_fatfs(struct fat_fs *fs)
         return vfs_res; // Failed to unmount from VFS
     }
 
-    f_mount(NULL, fs->base.mount_point, 0); // Unmount the file system
+    f_mount(NULL, "", 0); // Unmount the file system
     fs->base.mount_point = NULL; // Clear the mount point
     vSemaphoreDelete(fs->mutex);
     return 0; // Success
@@ -94,14 +94,16 @@ int fatfs_open(struct file *file, const char *path)
         return -1; // Memory allocation failed
     }
 
+    const char *_p = path + strlen(((struct fat_fs *) file->fs)->base.mount_point);
+
     // check if file is directory or not, if directory, use f_opendir & DIR*
     SemaphoreHandle_t mutex = ((struct fat_fs *) file->fs)->mutex;
     xSemaphoreTake(mutex, portMAX_DELAY);
-    FRESULT res = f_opendir(&data->dir, path);
+    FRESULT res = f_opendir(&data->dir, _p);
     xSemaphoreGive(mutex);
     if (res == FR_NO_PATH) {
         xSemaphoreTake(mutex, portMAX_DELAY);
-        res = f_open(&data->file, path, (BYTE) file->f_flags);
+        res = f_open(&data->file, _p, (BYTE) file->f_flags);
         xSemaphoreGive(mutex);
         if (res != FR_OK) {
             vPortFree(data);
@@ -112,7 +114,7 @@ int fatfs_open(struct file *file, const char *path)
         return -res; // Failed to open directory
     } else {
         data->fattrib = AM_DIR; // Mark as directory
-        if (strcmp(path, "/")) data->fattrib |= AM_NOT_ROOT; // Mark as not root
+        if (strcmp(_p, "")) data->fattrib |= AM_NOT_ROOT; // Mark as not root
     }
 
     file->private_data = data;
@@ -316,13 +318,15 @@ loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_max_len)
 
 int fatfs_create(const struct file_system *fs, const char *path, const char *name, umode_t mode)
 {
+    const char *_p = path + strlen(((struct fat_fs *) fs)->base.mount_point);
+
     // Create a new directory entry with the specified name and mode under the given path
-    char *full_path = pvPortMalloc(strlen(path) + strlen(name) + 2); // Allocate memory for full path
+    char *full_path = pvPortMalloc(strlen(_p) + strlen(name) + 2); // Allocate memory for full path
     if (!full_path) {
         return -1; // Failed to allocate memory
     }
 
-    snprintf(full_path, strlen(path) + strlen(name) + 2, "%s/%s", path, name);
+    snprintf(full_path, strlen(_p) + strlen(name) + 2, "%s/%s", _p, name);
     SemaphoreHandle_t mutex = ((struct fat_fs *) fs)->mutex;
     xSemaphoreTake(mutex, portMAX_DELAY);
     int result = f_mkdir(full_path);
@@ -335,7 +339,7 @@ int fatfs_unlink(const struct file_system *fs, const char *path)
 {
     SemaphoreHandle_t mutex = ((struct fat_fs *) fs)->mutex;
     xSemaphoreTake(mutex, portMAX_DELAY);
-    int result = f_unlink(path);
+    int result = f_unlink(path + strlen(((struct fat_fs *) fs)->base.mount_point));
     xSemaphoreGive(mutex);
     return result;
 }

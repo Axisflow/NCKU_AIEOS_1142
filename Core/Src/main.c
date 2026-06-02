@@ -99,7 +99,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  mount_fatfs(&fs, "/fatfs");
+  mount_fatfs(&fs, "/fatfs/");
   vTaskStartScheduler();
   unmount_fatfs(&fs);
   /* USER CODE END 2 */
