@@ -5,6 +5,10 @@
 
 #define LED_COUNT 4
 
+#define DHT22_GPIO_PORT         GPIOB
+#define DHT22_GPIO_PIN          GPIO_PIN_5
+#define DHT22_GPIO_CLK_ENABLE() __HAL_RCC_GPIOB_CLK_ENABLE()
+
 const LED_Config_t LED_Configs[LED_COUNT] =
 {
 	{
@@ -195,4 +199,31 @@ void initialize_LED(void)
 		HAL_GPIO_Init(LED_GetGPIOPort(LED_Configs[i].GPIO_Port), &GPIO_InitStruct);
 	}
 }
+
+static void DHT22_SetPinOutput(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = DHT22_GPIO_PIN;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(DHT22_GPIO_PORT, &GPIO_InitStruct);
+}
+
+static void DHT22_SetPinInput(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = DHT22_GPIO_PIN;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(DHT22_GPIO_PORT, &GPIO_InitStruct);
+}
+
+void initialize_DHT22(void)
+{
+	DHT22_GPIO_CLK_ENABLE();
+	DHT22_SetPinInput();
+}
+
 
