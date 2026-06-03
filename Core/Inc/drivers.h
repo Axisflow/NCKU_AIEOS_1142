@@ -13,6 +13,8 @@ typedef struct
 } LED_Config_t;
 
 void initialize_LED(void);
+void initialize_DHT22(void);
 
 #endif /* __DRIVERS_H */
+
 

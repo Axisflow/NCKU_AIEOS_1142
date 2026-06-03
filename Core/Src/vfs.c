@@ -217,3 +217,4 @@ vf_result_t vf_rmdir(const char *path) {
 
     return mounted->nops->rmdir(mounted, path);
 }
+
