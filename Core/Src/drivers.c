@@ -228,14 +228,17 @@ void initialize_LED(void)
 	/*************************/
 
 	/*VFS initialization*/
+
+	struct file_operations *LED_fops = calloc(sizeof(struct file_operations));
+	LED_fops->write = LED_write;
+
 	for (uint8_t i = 0; i < LED_COUNT; ++i)
 	{
 		struct file_system *fs = malloc(sizeof(struct file_system));
 		strcpy(fs->name, LED_Configs[i].name);
 		fs->mount_point = malloc(32);
 		snprintf((char*)fs->mount_point, 32, "/dev/%s", LED_Configs[i].name);
-		fs->fops = malloc(sizeof(struct file_operations));
-		fs->fops->write = LED_write;
+		fs->fops = LED_fops;
 		fs->nops = NULL;
 		vf_mount(fs);
 	}
