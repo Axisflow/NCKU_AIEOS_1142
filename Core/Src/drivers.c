@@ -211,6 +211,12 @@ __vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
 	return VF_ERROR;
 }
 
+// Define the file operations for the LED driver
+struct file_operations LED_fops={
+	.read = LED_read,
+	.write = LED_write
+};
+
 void initialize_LED(void)
 {
 	/*Hardware initialization*/
@@ -245,17 +251,13 @@ void initialize_LED(void)
 
 	/*VFS initialization*/
 
-	struct file_operations *LED_fops = calloc(sizeof(struct file_operations));
-	LED_fops->write = LED_write;
-	LED_fops->read = LED_read;
-
 	for (uint8_t i = 0; i < LED_COUNT; ++i)
 	{
-		struct file_system *fs = malloc(sizeof(struct file_system));
+		struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
 		strcpy(fs->name, LED_Configs[i].name);
-		fs->mount_point = malloc(32);
+		fs->mount_point = pvPortMalloc(32);
 		snprintf((char*)fs->mount_point, 32, "/dev/%s", LED_Configs[i].name);
-		fs->fops = LED_fops;
+		fs->fops = &LED_fops;
 		fs->nops = NULL;
 		vf_mount(fs);
 	}
