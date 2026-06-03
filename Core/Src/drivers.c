@@ -174,6 +174,21 @@ static uint32_t LED_GetSpeed(const char *speedName)
 	return GPIO_SPEED_FREQ_LOW;
 }
 
+// implement the read function in the struct file_operations for the LED driver
+__vf_ssize_t LED_read(struct file *file, char *buf, size_t count) {
+	const char* led_name = file->fs->mount_point;
+
+	for(uint8_t i=0;i<LED_COUNT;++i) {
+		if(strcmp(LED_Configs[i].name, led_name) == 0) {
+			GPIO_TypeDef* GPIO_Port = LED_GetGPIOPort(LED_Configs[i].GPIO_Port);
+			uint16_t GPIO_Pin = LED_GetGPIOPin(LED_Configs[i].GPIO_Pin);
+			buf[0] = HAL_GPIO_ReadPin(GPIO_Port, GPIO_Pin) == GPIO_PIN_SET ? '1' : '0';
+			return 1; // Return the number of bytes read
+		}
+	}
+	return VF_ERROR;
+}
+
 // implement the write function in the struct file_operations for the LED driver
 __vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
     const char* led_name = file->fs->mount_point; // The mount point is the LED name
@@ -190,9 +205,10 @@ __vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
 			} else {
 				return VF_INVALID; // Invalid command
 			}
-			return VF_SUCCESS; // Return the number of bytes written
+			return 1; // Return the number of bytes written
 		}
 	}
+	return VF_ERROR;
 }
 
 void initialize_LED(void)
@@ -231,6 +247,7 @@ void initialize_LED(void)
 
 	struct file_operations *LED_fops = calloc(sizeof(struct file_operations));
 	LED_fops->write = LED_write;
+	LED_fops->read = LED_read;
 
 	for (uint8_t i = 0; i < LED_COUNT; ++i)
 	{
