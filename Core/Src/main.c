@@ -26,6 +26,7 @@
 #include "task.h"
 
 #include "vfs_fatfs.h"
+#include "vfs_uart2_tty.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +51,7 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 struct fat_fs fs;
+struct uart2_tty_fs uart2_tty_fs;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,8 +102,10 @@ int main(void)
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   mount_fatfs(&fs, "/fatfs/");
+  mount_uart2_tty(&uart2_tty_fs, "/dev/", 128);
   vTaskStartScheduler();
   unmount_fatfs(&fs);
+  unmount_uart2_tty(&uart2_tty_fs);
   /* USER CODE END 2 */
 
   /* Infinite loop */
