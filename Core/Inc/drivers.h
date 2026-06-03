@@ -14,6 +14,7 @@ typedef struct
 
 void initialize_LED(void);
 void initialize_DHT22(void);
+void delay_us(uint32_t us);
 
 #endif /* __DRIVERS_H */
 
