@@ -2,12 +2,17 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f407xx.h"
 #include "drivers.h"
+#include "vfs.h"
 
 #define LED_COUNT 4
 
 #define DHT22_GPIO_PORT         GPIOB
 #define DHT22_GPIO_PIN          GPIO_PIN_5
 #define DHT22_GPIO_CLK_ENABLE() __HAL_RCC_GPIOB_CLK_ENABLE()
+
+/*************/ 
+/*    LED    */
+/*************/ 
 
 const LED_Config_t LED_Configs[LED_COUNT] =
 {
@@ -169,8 +174,30 @@ static uint32_t LED_GetSpeed(const char *speedName)
 	return GPIO_SPEED_FREQ_LOW;
 }
 
+// implement the write function in the struct file_operations for the LED driver
+__vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
+    const char* led_name = file->fs->mount_point; // The mount point is the LED name
+	
+	for(uint8_t i=0;i<LED_COUNT;++i) {
+		if(strcmp(LED_Configs[i].name, led_name) == 0) {
+			GPIO_TypeDef* GPIO_Port = LED_GetGPIOPort(LED_Configs[i].GPIO_Port);
+			uint16_t GPIO_Pin = LED_GetGPIOPin(LED_Configs[i].GPIO_Pin);
+			
+			if(count > 0 && buf[0] == '1') {
+				HAL_GPIO_WritePin(GPIO_Port, GPIO_Pin, GPIO_PIN_SET); // Turn on the LED
+			} else if(count > 0 && buf[0] == '0') {
+				HAL_GPIO_WritePin(GPIO_Port, GPIO_Pin, GPIO_PIN_RESET); // Turn off the LED
+			} else {
+				return VF_INVALID; // Invalid command
+			}
+			return VF_SUCCESS; // Return the number of bytes written
+		}
+	}
+}
+
 void initialize_LED(void)
 {
+	/*Hardware initialization*/
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
 	for (uint8_t i = 0; i < LED_COUNT; ++i)
@@ -198,8 +225,34 @@ void initialize_LED(void)
 		GPIO_InitStruct.Speed = LED_GetSpeed(LED_Configs[i].Speed);
 		HAL_GPIO_Init(LED_GetGPIOPort(LED_Configs[i].GPIO_Port), &GPIO_InitStruct);
 	}
+	/*************************/
+
+	/*VFS initialization*/
+
+	struct file_operations *LED_fops = calloc(sizeof(struct file_operations));
+	LED_fops->write = LED_write;
+
+	for (uint8_t i = 0; i < LED_COUNT; ++i)
+	{
+		struct file_system *fs = malloc(sizeof(struct file_system));
+		strcpy(fs->name, LED_Configs[i].name);
+		fs->mount_point = malloc(32);
+		snprintf((char*)fs->mount_point, 32, "/dev/%s", LED_Configs[i].name);
+		fs->fops = LED_fops;
+		fs->nops = NULL;
+		vf_mount(fs);
+	}
+	/********************/
+
 }
 
+
+
+
+
+/************/ 
+/*  DHT 11  */
+/************/ 
 static void DHT22_SetPinOutput(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct = {0};

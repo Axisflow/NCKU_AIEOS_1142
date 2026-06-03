@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <limits.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct file {
     // The flags used to open the file (e.g., O_RDONLY, O_WRONLY, O_RDWR, etc.)
     unsigned int f_flags;
@@ -119,5 +123,9 @@ const struct file_system *vfs_lookup(const char *path);
 
 // Unmount a file system from the VFS
 vfs_result_t vfs_unmount(const struct file_system *fs);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* VFS_H */

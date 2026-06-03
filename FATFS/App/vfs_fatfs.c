@@ -3,13 +3,25 @@
 #include <string.h>
 #include <stdio.h>
 
-struct node_operations fatfs_nops = {
+static int fatfs_open(struct file *file, const char *path);
+static __vf_ssize_t fatfs_read(struct file *file, char *buf, size_t count);
+static __vf_ssize_t fatfs_write(struct file *file, const char *buf, size_t count);
+static loff_t fatfs_llseek(struct file *file, loff_t offset, int whence);
+static int fatfs_fsync(struct file *file, loff_t start, loff_t end, int datasync);
+static poll_t fatfs_poll(struct file *file, poll_t events, int timeout_ms);
+static loff_t fatfs_iterate_shared (struct file *file, char *path, size_t path_max_len);
+static int fatfs_close(struct file *file);
+
+static int fatfs_create(const struct file_system *fs, const char *path, const char *name, umode_t mode);
+static int fatfs_unlink(const struct file_system *fs, const char *path);
+
+static const struct node_operations fatfs_nops = {
     .create = fatfs_create,
     .unlink = fatfs_unlink,
     .rmdir = fatfs_unlink, // FATFS does not distinguish between unlink and rmdir
 };
 
-struct file_operations fatfs_fops = {
+static const struct file_operations fatfs_fops = {
     .open = fatfs_open,
     .read = fatfs_read,
     .write = fatfs_write,
@@ -87,7 +99,7 @@ struct fatfs_file {
     };
 };
 
-int fatfs_open(struct file *file, const char *path)
+static int fatfs_open(struct file *file, const char *path)
 {
     struct fatfs_file *data = pvPortMalloc(sizeof(struct fatfs_file));
     if (data == NULL) {
@@ -121,7 +133,7 @@ int fatfs_open(struct file *file, const char *path)
     return 0; // Success
 }
 
-int fatfs_close(struct file *file)
+static int fatfs_close(struct file *file)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -142,7 +154,7 @@ int fatfs_close(struct file *file)
     return 0; // Success
 }
 
-__vf_ssize_t fatfs_read(struct file *file, char *buf, size_t count)
+static __vf_ssize_t fatfs_read(struct file *file, char *buf, size_t count)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -161,7 +173,7 @@ __vf_ssize_t fatfs_read(struct file *file, char *buf, size_t count)
     return bytesRead; // Return number of bytes read
 }
 
-__vf_ssize_t fatfs_write(struct file *file, const char *buf, size_t count)
+static __vf_ssize_t fatfs_write(struct file *file, const char *buf, size_t count)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -180,7 +192,7 @@ __vf_ssize_t fatfs_write(struct file *file, const char *buf, size_t count)
     return bytesWritten; // Return number of bytes written
 }
 
-loff_t fatfs_llseek(struct file *file, loff_t offset, int whence)
+static loff_t fatfs_llseek(struct file *file, loff_t offset, int whence)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -222,7 +234,7 @@ loff_t fatfs_llseek(struct file *file, loff_t offset, int whence)
     return newPos; // Return new file position
 }
 
-int fatfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
+static int fatfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -237,7 +249,7 @@ int fatfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
     return -res;
 }   
 
-poll_t fatfs_poll(struct file *file, poll_t events, int timeout_ms)
+static poll_t fatfs_poll(struct file *file, poll_t events, int timeout_ms)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -257,7 +269,7 @@ poll_t fatfs_poll(struct file *file, poll_t events, int timeout_ms)
     return revents;
 }
 
-int fatfs_dir_emit(struct fatfs_file *data, char *path, size_t path_max_len)
+static int fatfs_dir_emit(struct fatfs_file *data, char *path, size_t path_max_len)
 {
     // Emit the current directory entry name to the path buffer
     size_t name_len = strlen(data->_info.fname);
@@ -267,7 +279,7 @@ int fatfs_dir_emit(struct fatfs_file *data, char *path, size_t path_max_len)
     return 0; // Success
 }
 
-loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_max_len)
+static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_max_len)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
     if (data == NULL) {
@@ -316,7 +328,7 @@ loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_max_len)
     return data->d_off;
 }
 
-int fatfs_create(const struct file_system *fs, const char *path, const char *name, umode_t mode)
+static int fatfs_create(const struct file_system *fs, const char *path, const char *name, umode_t mode)
 {
     const char *_p = path + strlen(((struct fat_fs *) fs)->base.mount_point);
 
@@ -335,7 +347,7 @@ int fatfs_create(const struct file_system *fs, const char *path, const char *nam
     return result;
 }
 
-int fatfs_unlink(const struct file_system *fs, const char *path)
+static int fatfs_unlink(const struct file_system *fs, const char *path)
 {
     SemaphoreHandle_t mutex = ((struct fat_fs *) fs)->mutex;
     xSemaphoreTake(mutex, portMAX_DELAY);
