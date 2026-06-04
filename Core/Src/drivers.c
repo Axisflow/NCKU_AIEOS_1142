@@ -295,6 +295,113 @@ static void DHT22_SetPinInput(void)
 	HAL_GPIO_Init(DHT22_GPIO_PORT, &GPIO_InitStruct);
 }
 
+static int DHT22_Read_Raw(uint8_t *data)
+{
+	uint32_t timeout_ticks = SystemCoreClock / 1000000; // 1us對應的 CPU 週期數
+
+	// 1. 發送啟動訊號
+	DHT22_SetPinOutput();
+	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_RESET);
+	delay_us(18000); // 拉低至少 18ms
+	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_SET);
+	delay_us(30);    // 拉高 30us
+
+	// 2. 切換為輸入模式，等待回應
+	DHT22_SetPinInput();
+
+	// 等待 DHT22 拉低總線
+	uint32_t start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -1;
+	}
+
+	// 等待 DHT22 拉高總線
+	start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_RESET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -2;
+	}
+
+	// 等待回應的高電平結束（開始傳送第一個 bit 的低電平）
+	start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -3;
+	}
+
+	// 3. 讀取 40-bit 資料
+	for (int i = 0; i < 40; ++i)
+	{
+		// 等待低電平結束變為高電平
+		start_cycles = DWT->CYCCNT;
+		while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_RESET)
+		{
+			if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -4;
+		}
+
+		// 測量高電平持續時間
+		start_cycles = DWT->CYCCNT;
+		while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+		{
+			if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -5;
+		}
+
+		uint32_t high_duration = (DWT->CYCCNT - start_cycles) / timeout_ticks;
+
+		data[i / 8] <<= 1;
+		if (high_duration > 40) // 高電平大於 40us 代表 bit 1
+		{
+			data[i / 8] |= 1;
+		}
+	}
+
+	// 4. 校驗碼檢查 (Checksum)
+	uint8_t checksum = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
+	if (checksum != data[4])
+	{
+		return -6;
+	}
+
+	return 0;
+}
+
+static float cached_temp = 0.0f;
+static float cached_hum = 0.0f;
+static uint32_t last_read_time = 0;
+
+static int DHT22_Read_Data(float *temp, float *hum)
+{
+	uint32_t current_time = HAL_GetTick();
+
+	// 每 2 秒才允許重新讀取一次硬體，防止讀取過於頻繁
+	if (last_read_time == 0 || (current_time - last_read_time) >= 2000)
+	{
+		uint8_t data[5] = {0};
+		int status = DHT22_Read_Raw(data);
+		if (status == 0)
+		{
+			float h = ((uint16_t)data[0] << 8 | data[1]) / 10.0f;
+			float t = (((uint16_t)(data[2] & 0x7F) << 8) | data[3]) / 10.0f;
+			if (data[2] & 0x80)
+			{
+				t = -t;
+			}
+			cached_temp = t;
+			cached_hum = h;
+			last_read_time = current_time;
+		}
+		else
+		{
+			return status;
+		}
+	}
+
+	*temp = cached_temp;
+	*hum = cached_hum;
+	return 0;
+}
+
 void initialize_DHT22(void)
 {
 	DHT22_GPIO_CLK_ENABLE();
