@@ -25,6 +25,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "drivers.h"
 #include "vfs_fatfs.h"
 #include "vfs_uart2_tty.h"
 /* USER CODE END Includes */
