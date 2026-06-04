@@ -1,4 +1,7 @@
 #include <string.h>
+#include <stdio.h>
+
+#include "FreeRTOS.h"
 #include "stm32f4xx_hal.h"
 #include "stm32f407xx.h"
 #include "drivers.h"
@@ -259,7 +262,7 @@ void initialize_LED(void)
 		snprintf((char*)fs->mount_point, 32, "/dev/%s", LED_Configs[i].name);
 		fs->fops = &LED_fops;
 		fs->nops = NULL;
-		vf_mount(fs);
+		vfs_mount(fs);
 	}
 	/********************/
 
