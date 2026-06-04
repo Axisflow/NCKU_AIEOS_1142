@@ -24,6 +24,10 @@
 /* USER CODE BEGIN Includes */
 #include "FreeRTOS.h"
 #include "task.h"
+
+#include "drivers.h"
+#include "vfs_fatfs.h"
+#include "vfs_uart2_tty.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +51,8 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+struct fat_fs fs;
+struct uart2_tty_fs uart2_tty_fs;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +87,8 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+  initialize_LED();
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -97,7 +104,11 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  mount_fatfs(&fs, "/fatfs/");
+  mount_uart2_tty(&uart2_tty_fs, "/dev/uart2_tty", 128);
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
+  unmount_fatfs(&fs);
+  unmount_uart2_tty(&uart2_tty_fs);
   /* USER CODE END 2 */
 
   /* Infinite loop */
