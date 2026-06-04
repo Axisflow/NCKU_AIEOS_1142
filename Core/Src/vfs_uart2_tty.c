@@ -10,28 +10,20 @@
 
 #include <string.h>
 
-struct __file {
-    uint8_t is_dir;
-    loff_t d_off;
-};
-
-static int __open(struct file *file, const char *path);
 static __vf_ssize_t __read(struct file *file, char *buf, size_t count);
 static __vf_ssize_t __write(struct file *file, const char *buf, size_t count);
-static loff_t __llseek(struct file *file, loff_t offset, int whence);
 static int __fsync(struct file *file, loff_t start, loff_t end, int datasync);
 static poll_t __poll(struct file *file, poll_t events, int timeout_ms);
-static int __close(struct file *file);
 
 static const struct file_operations __fops = {
-    .open = __open,
+    .open = NULL,
     .read = __read,
     .write = __write,
-    .llseek = __llseek,
+    .llseek = NULL,
     .fsync = __fsync,
     .poll = __poll,
     .iterate_shared = NULL,
-    .close = __close,
+    .close = NULL,
 };
 
 extern UART_HandleTypeDef huart2;
@@ -115,49 +107,10 @@ int unmount_uart2_tty(struct uart2_tty_fs *fs)
     return res;
 }
 
-static int __open(struct file *file, const char *path)
-{
-    if (!file || !path || !file->fs || !file->fs->mount_point) {
-        return VF_INVALID;
-    }
-
-    const size_t mp_len = strlen(file->fs->mount_point);
-    if (strncmp(path, file->fs->mount_point, mp_len) != 0) {
-        return VF_INVALID;
-    }
-
-    const char *rel = path + mp_len;
-
-    struct __file *priv = (struct __file *)pvPortMalloc(sizeof(*priv));
-    if (!priv) {
-        return VF_ERROR;
-    }
-    priv->is_dir = 0;
-    priv->d_off = 0;
-
-    /* Support opening the mount root as a directory, and "tty2" as the device. */
-    if (rel[0] == '\0') {
-        priv->is_dir = 1;
-    } else if (strcmp(rel, "tty2") == 0) {
-        priv->is_dir = 0;
-    } else {
-        vPortFree(priv);
-        return VF_NOT_FOUND;
-    }
-
-    file->private_data = priv;
-    return VF_SUCCESS;
-}
-
 static __vf_ssize_t __read(struct file *file, char *buf, size_t count)
 {
     if (!file || !buf || count == 0) {
         return 0;
-    }
-
-    struct __file *priv = (struct __file *)file->private_data;
-    if (!priv || priv->is_dir) {
-        return (__vf_ssize_t)VF_INVALID;
     }
 
     struct uart2_tty_fs *fs = (struct uart2_tty_fs *)file->fs;
@@ -172,11 +125,6 @@ static __vf_ssize_t __read(struct file *file, char *buf, size_t count)
 static __vf_ssize_t __write(struct file *file, const char *buf, size_t count)
 {
     if (!file || !buf) {
-        return (__vf_ssize_t)VF_INVALID;
-    }
-
-    struct __file *priv = (struct __file *)file->private_data;
-    if (!priv || priv->is_dir) {
         return (__vf_ssize_t)VF_INVALID;
     }
 
@@ -195,11 +143,6 @@ static __vf_ssize_t __write(struct file *file, const char *buf, size_t count)
     return (__vf_ssize_t)count;
 }
 
-static loff_t __llseek(struct file *file, loff_t offset, int whence)
-{
-    return (loff_t)VF_INVALID;
-}
-
 static int __fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
     return VF_SUCCESS;
@@ -209,11 +152,6 @@ static poll_t __poll(struct file *file, poll_t events, int timeout_ms)
 {
     (void)timeout_ms;
     if (!file) {
-        return POLLNVAL;
-    }
-
-    struct __file *priv = (struct __file *)file->private_data;
-    if (!priv || priv->is_dir) {
         return POLLNVAL;
     }
 
@@ -236,17 +174,4 @@ static poll_t __poll(struct file *file, poll_t events, int timeout_ms)
     }
     
     return revents;
-}
-
-static int __close(struct file *file)
-{
-    if (!file) {
-        return VF_INVALID;
-    }
-
-    if (file->private_data) {
-        vPortFree(file->private_data);
-        file->private_data = NULL;
-    }
-    return VF_SUCCESS;
 }

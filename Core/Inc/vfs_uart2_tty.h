@@ -11,11 +11,7 @@
 extern "C" {
 #endif
 
-/* A minimal VFS-backed TTY for USART2.
- *
- * Mount point suggestion: "/dev/"
- * Device path:            "/dev/tty2"
- */
+// A minimal VFS-backed TTY for USART2
 struct uart2_tty_fs {
     struct file_system base;
 

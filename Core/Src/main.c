@@ -102,7 +102,7 @@ int main(void)
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   mount_fatfs(&fs, "/fatfs/");
-  mount_uart2_tty(&uart2_tty_fs, "/dev/", 128);
+  mount_uart2_tty(&uart2_tty_fs, "/dev/uart2_tty", 128);
   vTaskStartScheduler();
   unmount_fatfs(&fs);
   unmount_uart2_tty(&uart2_tty_fs);
