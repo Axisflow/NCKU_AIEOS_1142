@@ -299,38 +299,32 @@ static int DHT22_Read_Raw(uint8_t *data)
 {
 	uint32_t timeout_ticks = SystemCoreClock / 1000000; // 1us對應的 CPU 週期數
 
-	// 1. 發送啟動訊號
 	DHT22_SetPinOutput();
 	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_RESET);
 	delay_us(18000); // 拉低至少 18ms
 	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_SET);
 	delay_us(30);    // 拉高 30us
 
-	// 2. 切換為輸入模式，等待回應
 	DHT22_SetPinInput();
 
-	// 等待 DHT22 拉低總線
 	uint32_t start_cycles = DWT->CYCCNT;
 	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
 	{
 		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -1;
 	}
 
-	// 等待 DHT22 拉高總線
 	start_cycles = DWT->CYCCNT;
 	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_RESET)
 	{
 		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -2;
 	}
 
-	// 等待回應的高電平結束（開始傳送第一個 bit 的低電平）
 	start_cycles = DWT->CYCCNT;
 	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
 	{
 		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -3;
 	}
 
-	// 3. 讀取 40-bit 資料
 	for (int i = 0; i < 40; ++i)
 	{
 		// 等待低電平結束變為高電平
@@ -356,7 +350,6 @@ static int DHT22_Read_Raw(uint8_t *data)
 		}
 	}
 
-	// 4. 校驗碼檢查 (Checksum)
 	uint8_t checksum = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
 	if (checksum != data[4])
 	{
@@ -401,6 +394,65 @@ static int DHT22_Read_Data(float *temp, float *hum)
 	*hum = cached_hum;
 	return 0;
 }
+
+__vf_ssize_t DHT22_temp_read(struct file *file, char *buf, size_t count)
+{
+	float temp = 0.0f;
+	float hum = 0.0f;
+	int status = DHT22_Read_Data(&temp, &hum);
+	if (status != 0)
+	{
+		return VF_ERROR; 
+	}
+
+	int temp_int = (int)temp;
+	int temp_dec = (int)((temp - temp_int) * 10);
+	if (temp_dec < 0)
+	{
+		temp_dec = -temp_dec;
+	}
+
+	int len;
+	if (temp < 0.0f && temp_int == 0)
+	{
+		len = snprintf(buf, count, "-0.%d\n", temp_dec);
+	}
+	else
+	{
+		len = snprintf(buf, count, "%d.%d\n", temp_int, temp_dec);
+	}
+
+	return len; 
+}
+
+__vf_ssize_t DHT22_hum_read(struct file *file, char *buf, size_t count)
+{
+	float temp = 0.0f;
+	float hum = 0.0f;
+	int status = DHT22_Read_Data(&temp, &hum);
+	if (status != 0)
+	{
+		return VF_ERROR; 
+	}
+
+	int hum_int = (int)hum;
+	int hum_dec = (int)((hum - hum_int) * 10);
+	if (hum_dec < 0)
+	{
+		hum_dec = -hum_dec;
+	}
+
+	int len = snprintf(buf, count, "%d.%d\n", hum_int, hum_dec);
+	return len; 
+}
+
+struct file_operations DHT22_temp_fops = {
+	.read = DHT22_temp_read
+};
+
+struct file_operations DHT22_hum_fops = {
+	.read = DHT22_hum_read
+};
 
 void initialize_DHT22(void)
 {
