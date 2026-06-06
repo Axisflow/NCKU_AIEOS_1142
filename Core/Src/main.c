@@ -88,6 +88,7 @@ int main(void)
   /* USER CODE BEGIN Init */
 
   initialize_LED();
+  initialize_DHT22();
 
   /* USER CODE END Init */
 
