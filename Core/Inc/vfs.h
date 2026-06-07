@@ -1,7 +1,7 @@
 #ifndef VFS_H
 #define VFS_H
 
-#include <stddef.h>
+#include <string.h>
 #include <limits.h>
 
 #ifdef __cplusplus
@@ -12,7 +12,7 @@ struct file {
     // The flags used to open the file (e.g., O_RDONLY, O_WRONLY, O_RDWR, etc.)
     unsigned int f_flags;
 
-    // The file system that this file belongs to (e.g., FATFS, DEVFS, etc.)
+    // The mounted file system that this file belongs to
     const struct file_system *fs;
 
     // The current file position (offset) in bytes from the beginning of the file
@@ -118,11 +118,28 @@ typedef vf_result_t vfs_result_t;
 // Mount a file system to the VFS
 vfs_result_t vfs_mount(const struct file_system *fs);
 
-// Look up a file system by its mount point or its subdirectories. Returns NULL if not found.
+// Normalize an input path, e.g., "/path//to///dir////" -> "path/to/dir"
+vfs_result_t vfs_normalize(char *target);
+
+// Look up a file system by its mount point or its subdirectories
 const struct file_system *vfs_lookup(const char *path);
+
+// Emit the current directory entry name to the path buffer and update the record length accordingly
+vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t dst_max_len, size_t *reclen);
 
 // Unmount a file system from the VFS
 vfs_result_t vfs_unmount(const struct file_system *fs);
+
+#define __valid_file(target) ( target && !strpbrk(target, "/\\:*?\"<>|\'`&") )
+#define __valid_path(target) ( target && !strpbrk(target, "\\:*?\"<>|\'`&") )
+
+#define __syn_current_dir "."
+#define __syn_parent_dir ".."
+
+struct __fs_hlist {
+    const struct file_system *fs;
+    struct __fs_hlist *next;
+};
 
 #ifdef __cplusplus
 }
