@@ -1,6 +1,5 @@
 #include "vfs_fatfs.h"
 
-#include <string.h>
 #include <stdio.h>
 
 static int fatfs_open(struct file *file, const char *path);
@@ -49,7 +48,7 @@ int mount_fatfs(struct fat_fs *fs, const char *mount_point)
         return -res; // Failed to mount file system
     }
 
-    strncpy(fs->base.name, "FATFS", sizeof(fs->base.name) - 1);
+    strncpy(fs->base.name, "FATFS", sizeof(fs->base.name));
     fs->base.mount_point = mount_point; // Store the mount point for later use
     fs->base.nops = &fatfs_nops;
     fs->base.fops = &fatfs_fops;
@@ -93,7 +92,7 @@ struct fatfs_file {
             DIR dir;  // For directories
             BYTE fattrib;
             loff_t d_off; // Entry index for iteration
-            unsigned char d_reclen; // Directory record length (the remaining length of the current entry name)
+            size_t d_reclen; // Directory record length (the remaining length of the current entry name)
             FILINFO _info;
         };
     };
@@ -106,7 +105,7 @@ static int fatfs_open(struct file *file, const char *path)
         return -1; // Memory allocation failed
     }
 
-    const char *_p = path + strlen(((struct fat_fs *) file->fs)->base.mount_point);
+    const char *_p = ++path + strlen(((struct fat_fs *) file->fs)->base.mount_point);
 
     // check if file is directory or not, if directory, use f_opendir & DIR*
     SemaphoreHandle_t mutex = ((struct fat_fs *) file->fs)->mutex;
@@ -129,6 +128,8 @@ static int fatfs_open(struct file *file, const char *path)
         if (strcmp(_p, "")) data->fattrib |= AM_NOT_ROOT; // Mark as not root
     }
 
+    data->d_off = 0;
+    data->d_reclen = 0;
     file->private_data = data;
     return 0; // Success
 }
@@ -269,16 +270,6 @@ static poll_t fatfs_poll(struct file *file, poll_t events, int timeout_ms)
     return revents;
 }
 
-static int fatfs_dir_emit(struct fatfs_file *data, char *path, size_t path_max_len)
-{
-    // Emit the current directory entry name to the path buffer
-    size_t name_len = strlen(data->_info.fname);
-    size_t emit_len = (data->d_reclen < path_max_len) ? data->d_reclen : path_max_len;
-    memcpy(path, data->_info.fname + (name_len - data->d_reclen), emit_len);
-    data->d_reclen -= emit_len;
-    return 0; // Success
-}
-
 static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_max_len)
 {
     struct fatfs_file *data = (struct fatfs_file *) file->private_data;
@@ -293,15 +284,14 @@ static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_ma
 
     // First call must emit "."
     else if (data->d_off == 0) {
-        data->d_reclen = 1; // The length of "." is 1
-        data->_info.fname[0] = '.'; // Set the current entry name to "."
+        data->d_reclen = strlen(__syn_current_dir); // The length of "." is 1
+        strcpy(data->_info.fname, __syn_current_dir);
     }
 
     // Second call emit ".." if it is not the root directory
     else if (data->d_off == 1 && (data->fattrib & AM_NOT_ROOT)) {
-        data->d_reclen = 2; // The length of ".." is 2
-        data->_info.fname[0] = '.'; // Set the current entry name to ".."
-        data->_info.fname[1] = '.';
+        data->d_reclen = strlen(__syn_parent_dir); // The length of ".." is 2
+        strcpy(data->_info.fname, __syn_parent_dir);
     }
 
     // Then emit the entries in the directory one by one
@@ -311,14 +301,18 @@ static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_ma
         FRESULT res = f_readdir(&data->dir, &data->_info);
         xSemaphoreGive(mutex);
         if (res != FR_OK) {
-            return -res; // Failed to read directory
+            return data->d_off; // Failed to read directory
+        } else if (data->_info.fname[0] == '\0') {
+            return ++data->d_off; // No more entries
         }
         
         data->d_reclen = strlen(data->_info.fname); // Set the record length to the length of the entry name
     }
 
     // Fill the path buffer with the current entry name and update d_reclen accordingly
-    fatfs_dir_emit(data, path, path_max_len);
+    if (vfs_dir_emit(data->_info.fname, path, path_max_len, &data->d_reclen) != VF_SUCCESS) {
+        return data->d_off;
+    }
 
     // Return the same entry index if there are still remaining characters, otherwise move to the next entry
     if (!data->d_reclen) {
@@ -330,7 +324,7 @@ static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_ma
 
 static int fatfs_create(const struct file_system *fs, const char *path, const char *name, umode_t mode)
 {
-    const char *_p = path + strlen(((struct fat_fs *) fs)->base.mount_point);
+    const char *_p = ++path + strlen(((struct fat_fs *) fs)->base.mount_point);
 
     // Create a new directory entry with the specified name and mode under the given path
     char *full_path = pvPortMalloc(strlen(_p) + strlen(name) + 2); // Allocate memory for full path
@@ -351,7 +345,7 @@ static int fatfs_unlink(const struct file_system *fs, const char *path)
 {
     SemaphoreHandle_t mutex = ((struct fat_fs *) fs)->mutex;
     xSemaphoreTake(mutex, portMAX_DELAY);
-    int result = f_unlink(path + strlen(((struct fat_fs *) fs)->base.mount_point));
+    int result = f_unlink(++path + strlen(((struct fat_fs *) fs)->base.mount_point));
     xSemaphoreGive(mutex);
     return result;
 }

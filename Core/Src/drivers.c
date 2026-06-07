@@ -259,7 +259,7 @@ void initialize_LED(void)
 		struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
 		strcpy(fs->name, LED_Configs[i].name);
 		fs->mount_point = pvPortMalloc(32);
-		snprintf((char*)fs->mount_point, 32, "/dev/%s", LED_Configs[i].name);
+		snprintf((char*)fs->mount_point, 32, "dev/%s", LED_Configs[i].name);
 		fs->fops = &LED_fops;
 		fs->nops = NULL;
 		vfs_mount(fs);

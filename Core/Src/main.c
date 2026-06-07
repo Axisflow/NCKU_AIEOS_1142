@@ -26,6 +26,7 @@
 #include "task.h"
 
 #include "drivers.h"
+#include "vfs_default.h"
 #include "vfs_fatfs.h"
 #include "vfs_uart2_tty.h"
 /* USER CODE END Includes */
@@ -51,7 +52,8 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-struct fat_fs fs;
+struct file_system rom_fs;
+struct fat_fs sdcard_fs;
 struct uart2_tty_fs uart2_tty_fs;
 /* USER CODE END PV */
 
@@ -105,11 +107,13 @@ int main(void)
   MX_USART2_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  mount_fatfs(&fs, "/fatfs/");
-  mount_uart2_tty(&uart2_tty_fs, "/dev/uart2_tty", 128);
-  vTaskStartScheduler();
-  unmount_fatfs(&fs);
+  mount_default(&rom_fs, "");
+  mount_fatfs(&sdcard_fs, "fatfs");
+  mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
+  vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   unmount_uart2_tty(&uart2_tty_fs);
+  unmount_fatfs(&sdcard_fs);
+  unmount_default(&rom_fs);
   /* USER CODE END 2 */
 
   /* Infinite loop */

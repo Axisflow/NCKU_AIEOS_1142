@@ -8,8 +8,6 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f407xx.h"
 
-#include <string.h>
-
 static __vf_ssize_t __read(struct file *file, char *buf, size_t count);
 static __vf_ssize_t __write(struct file *file, const char *buf, size_t count);
 static int __fsync(struct file *file, loff_t start, loff_t end, int datasync);
@@ -103,6 +101,7 @@ int unmount_uart2_tty(struct uart2_tty_fs *fs)
         vSemaphoreDelete(fs->tx_mutex);
         fs->tx_mutex = NULL;
     }
+    
     fs->base.mount_point = NULL;
     return res;
 }
