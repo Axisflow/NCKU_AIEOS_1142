@@ -295,6 +295,165 @@ static void DHT22_SetPinInput(void)
 	HAL_GPIO_Init(DHT22_GPIO_PORT, &GPIO_InitStruct);
 }
 
+static int DHT22_Read_Raw(uint8_t *data)
+{
+	uint32_t timeout_ticks = SystemCoreClock / 1000000; // 1us對應的 CPU 週期數
+
+	DHT22_SetPinOutput();
+	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_RESET);
+	delay_us(18000); // 拉低至少 18ms
+	HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_SET);
+	delay_us(30);    // 拉高 30us
+
+	DHT22_SetPinInput();
+
+	uint32_t start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -1;
+	}
+
+	start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_RESET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -2;
+	}
+
+	start_cycles = DWT->CYCCNT;
+	while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+	{
+		if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -3;
+	}
+
+	for (int i = 0; i < 40; ++i)
+	{
+		// 等待低電平結束變為高電平
+		start_cycles = DWT->CYCCNT;
+		while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_RESET)
+		{
+			if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -4;
+		}
+
+		// 測量高電平持續時間
+		start_cycles = DWT->CYCCNT;
+		while (HAL_GPIO_ReadPin(DHT22_GPIO_PORT, DHT22_GPIO_PIN) == GPIO_PIN_SET)
+		{
+			if ((DWT->CYCCNT - start_cycles) > 100 * timeout_ticks) return -5;
+		}
+
+		uint32_t high_duration = (DWT->CYCCNT - start_cycles) / timeout_ticks;
+
+		data[i / 8] <<= 1;
+		if (high_duration > 40) // 高電平大於 40us 代表 bit 1
+		{
+			data[i / 8] |= 1;
+		}
+	}
+
+	uint8_t checksum = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
+	if (checksum != data[4])
+	{
+		return -6;
+	}
+
+	return 0;
+}
+
+static float cached_temp = 0.0f;
+static float cached_hum = 0.0f;
+static uint32_t last_read_time = 0;
+
+static int DHT22_Read_Data(float *temp, float *hum)
+{
+	uint32_t current_time = HAL_GetTick();
+
+	// 每 2 秒才允許重新讀取一次硬體，防止讀取過於頻繁
+	if (last_read_time == 0 || (current_time - last_read_time) >= 2000)
+	{
+		uint8_t data[5] = {0};
+		int status = DHT22_Read_Raw(data);
+		if (status == 0)
+		{
+			float h = ((uint16_t)data[0] << 8 | data[1]) / 10.0f;
+			float t = (((uint16_t)(data[2] & 0x7F) << 8) | data[3]) / 10.0f;
+			if (data[2] & 0x80)
+			{
+				t = -t;
+			}
+			cached_temp = t;
+			cached_hum = h;
+			last_read_time = current_time;
+		}
+		else
+		{
+			return status;
+		}
+	}
+
+	*temp = cached_temp;
+	*hum = cached_hum;
+	return 0;
+}
+
+__vf_ssize_t DHT22_temp_read(struct file *file, char *buf, size_t count)
+{
+	float temp = 0.0f;
+	float hum = 0.0f;
+	int status = DHT22_Read_Data(&temp, &hum);
+	if (status != 0)
+	{
+		return VF_ERROR; 
+	}
+
+	int temp_int = (int)temp;
+	int temp_dec = (int)((temp - temp_int) * 10);
+	if (temp_dec < 0)
+	{
+		temp_dec = -temp_dec;
+	}
+
+	int len;
+	if (temp < 0.0f && temp_int == 0)
+	{
+		len = snprintf(buf, count, "-0.%d\n", temp_dec);
+	}
+	else
+	{
+		len = snprintf(buf, count, "%d.%d\n", temp_int, temp_dec);
+	}
+
+	return len; 
+}
+
+__vf_ssize_t DHT22_hum_read(struct file *file, char *buf, size_t count)
+{
+	float temp = 0.0f;
+	float hum = 0.0f;
+	int status = DHT22_Read_Data(&temp, &hum);
+	if (status != 0)
+	{
+		return VF_ERROR; 
+	}
+
+	int hum_int = (int)hum;
+	int hum_dec = (int)((hum - hum_int) * 10);
+	if (hum_dec < 0)
+	{
+		hum_dec = -hum_dec;
+	}
+
+	int len = snprintf(buf, count, "%d.%d\n", hum_int, hum_dec);
+	return len; 
+}
+
+struct file_operations DHT22_temp_fops = {
+	.read = DHT22_temp_read
+};
+
+struct file_operations DHT22_hum_fops = {
+	.read = DHT22_hum_read
+};
+
 void initialize_DHT22(void)
 {
 	DHT22_GPIO_CLK_ENABLE();
@@ -303,6 +462,36 @@ void initialize_DHT22(void)
 	// Enable DWT Cycle Counter
 	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
+	/* VFS initialization for Temperature Device (dev/temp0) */
+	struct file_system *fs_temp = pvPortMalloc(sizeof(struct file_system));
+	if (fs_temp != NULL)
+	{
+		strcpy(fs_temp->name, "temp0");
+		fs_temp->mount_point = pvPortMalloc(32);
+		if (fs_temp->mount_point != NULL)
+		{
+			strcpy((char*)fs_temp->mount_point, "dev/temp0");
+			fs_temp->fops = &DHT22_temp_fops;
+			fs_temp->nops = NULL;
+			vfs_mount(fs_temp);
+		}
+	}
+
+	/* VFS initialization for Humidity Device (dev/hum0) */
+	struct file_system *fs_hum = pvPortMalloc(sizeof(struct file_system));
+	if (fs_hum != NULL)
+	{
+		strcpy(fs_hum->name, "hum0");
+		fs_hum->mount_point = pvPortMalloc(32);
+		if (fs_hum->mount_point != NULL)
+		{
+			strcpy((char*)fs_hum->mount_point, "dev/hum0");
+			fs_hum->fops = &DHT22_hum_fops;
+			fs_hum->nops = NULL;
+			vfs_mount(fs_hum);
+		}
+	}
 }
 
 void delay_us(uint32_t us)
