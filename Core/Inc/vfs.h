@@ -101,7 +101,7 @@ struct file_system {
     // the name of the file system, e.g., "FATFS", "DEVFS", etc.
     char name[16];
 
-    // the mount point for this file system, e.g., "/fatfs", "/dev", etc.
+    // the mount point for this file system, e.g., "fatfs", "dev/led0", etc.
     const char *mount_point;
 
     // the operations supported by this file system

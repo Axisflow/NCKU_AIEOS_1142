@@ -463,7 +463,7 @@ void initialize_DHT22(void)
 	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
-	/* VFS initialization for Temperature Device (/dev/temp0) */
+	/* VFS initialization for Temperature Device (dev/temp0) */
 	struct file_system *fs_temp = pvPortMalloc(sizeof(struct file_system));
 	if (fs_temp != NULL)
 	{
@@ -471,14 +471,14 @@ void initialize_DHT22(void)
 		fs_temp->mount_point = pvPortMalloc(32);
 		if (fs_temp->mount_point != NULL)
 		{
-			strcpy((char*)fs_temp->mount_point, "/dev/temp0");
+			strcpy((char*)fs_temp->mount_point, "dev/temp0");
 			fs_temp->fops = &DHT22_temp_fops;
 			fs_temp->nops = NULL;
 			vfs_mount(fs_temp);
 		}
 	}
 
-	/* VFS initialization for Humidity Device (/dev/hum0) */
+	/* VFS initialization for Humidity Device (dev/hum0) */
 	struct file_system *fs_hum = pvPortMalloc(sizeof(struct file_system));
 	if (fs_hum != NULL)
 	{
@@ -486,7 +486,7 @@ void initialize_DHT22(void)
 		fs_hum->mount_point = pvPortMalloc(32);
 		if (fs_hum->mount_point != NULL)
 		{
-			strcpy((char*)fs_hum->mount_point, "/dev/hum0");
+			strcpy((char*)fs_hum->mount_point, "dev/hum0");
 			fs_hum->fops = &DHT22_hum_fops;
 			fs_hum->nops = NULL;
 			vfs_mount(fs_hum);
