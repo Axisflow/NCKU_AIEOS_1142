@@ -26,6 +26,7 @@
 #include "task.h"
 
 #include "drivers.h"
+#include "vfsio.h"
 #include "vfs_default.h"
 #include "vfs_fatfs.h"
 #include "vfs_uart2_tty.h"
@@ -55,6 +56,8 @@ UART_HandleTypeDef huart2;
 struct file_system rom_fs;
 struct fat_fs sdcard_fs;
 struct uart2_tty_fs uart2_tty_fs;
+
+TaskHandle_t logTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,6 +71,36 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void LogTask(void *pvParameters) {
+  struct file uart2tty;
+  vf_result_t rst = vf_open(&uart2tty, "dev/uart2_tty", 0);
+  if (rst != VF_SUCCESS) return;
+
+  vf_fprintf(&uart2tty, "LogTask started.\r\n");
+  struct file file;
+  rst = vf_open(&file, "fatfs/log.txt", FA_WRITE | FA_CREATE_ALWAYS);
+  if (rst != VF_SUCCESS) {
+    vf_fprintf(&uart2tty, "Failed to open log file: %d\r\n", rst);
+    return;
+  }
+  
+  vf_fprintf(&uart2tty, "Logging initialized.\r\n");
+  while (1) {
+    vf_fprintf(&uart2tty, "Logging message to FATFS...\r\n");
+
+    long long write_rst = vf_write(&file, "Hello, FATFS!\r\n", 15);
+    if (write_rst < 0) vf_fprintf(&uart2tty, "Write error: %d\r\n", write_rst);
+
+    long long fsync_rst = vf_fsync(&file, 0);
+    if (fsync_rst != VF_SUCCESS) vf_fprintf(&uart2tty, "Fsync error: %d\r\n", fsync_rst);
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+
+  vf_close(&file);
+  vf_fprintf(&uart2tty, "Log task failed.\r\n");
+  vf_close(&uart2tty);
+}
 
 /* USER CODE END 0 */
 
@@ -109,6 +142,7 @@ int main(void)
   mount_default(&rom_fs, "");
   mount_fatfs(&sdcard_fs, "fatfs");
   mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
+  xTaskCreate(LogTask, "LogTask", 1024, NULL, tskIDLE_PRIORITY + 1, &logTaskHandle);
   vTaskStartScheduler(); /* Start FreeRTOS scheduler */
   unmount_uart2_tty(&uart2_tty_fs);
   unmount_fatfs(&sdcard_fs);
