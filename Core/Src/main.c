@@ -89,10 +89,13 @@ int main(void)
 
   /* USER CODE BEGIN Init */
   MX_I2C1_Init(); 
+  MX_ADC1_Init();
 
+  /* 按需啟用感測器初始化函式 */
   initialize_LED();
-  initialize_DHT22();
-  initialize_bodyTemp();
+  // initialize_DHT22();
+  // initialize_bodyTemp();
+  // initialize_AD8232();
 
   /* USER CODE END Init */
 

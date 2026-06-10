@@ -1,12 +1,19 @@
 #ifndef __DRIVERS_H
 #define __DRIVERS_H
 
+#ifndef HAL_I2C_MODULE_ENABLED
+#define HAL_I2C_MODULE_ENABLED
+#endif
+#ifndef HAL_ADC_MODULE_ENABLED
+#define HAL_ADC_MODULE_ENABLED
+#endif
+
+#include "main.h"
 #include <stdint.h>
-#include <stdbool.h>	
-#include "stm32f407xx.h"
-#include "stm32f4xx_hal.h"
+#include <stdbool.h>
 
 extern I2C_HandleTypeDef hi2c1;
+extern ADC_HandleTypeDef hadc1;
 
 typedef struct
 {
@@ -24,6 +31,15 @@ typedef struct
 	const char *name;
 	GPIO_Config_t Led_Config;
 } LED_Config_t;
+
+typedef struct
+{
+    const char *DeviceName;
+    ADC_HandleTypeDef *ADCx;
+    GPIO_Config_t OUT_Config;  // AD8232輸出腳位配置
+    GPIO_Config_t LOPlus_Config;  // 正輸入端電極脫落偵測腳位
+    GPIO_Config_t LOMinus_Config;  // 負輸入端電極脫落偵測腳位
+} AD8232_Config_t;
 
 typedef struct
 {
@@ -56,6 +72,9 @@ typedef struct
 void initialize_LED(void);
 void initialize_DHT22(void);
 void initialize_bodyTemp(void);
+void initialize_AD8232(void);
+void MX_I2C1_Init(void);
+void MX_ADC1_Init(void);		
 void delay_us(uint32_t us);
 
 #endif /* __DRIVERS_H */

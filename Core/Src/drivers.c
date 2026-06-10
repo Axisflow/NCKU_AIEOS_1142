@@ -1,8 +1,5 @@
 #include <string.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
-
 #include "stm32f407xx.h"
 #include "stm32f4xx_hal.h"
 #include "FreeRTOS.h"
@@ -16,6 +13,7 @@
 #define DHT22_GPIO_CLK_ENABLE() __HAL_RCC_GPIOB_CLK_ENABLE()
 
 #define bodyTemp_Count 1
+#define AD8232_Count 1
 
 
 /**************/ 
@@ -23,6 +21,7 @@
 /**************/ 
 
 I2C_HandleTypeDef hi2c1;
+ADC_HandleTypeDef hadc1;
 
 void MX_I2C1_Init(void)
 {
@@ -40,6 +39,38 @@ void MX_I2C1_Init(void)
     hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
     hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
     HAL_I2C_Init(&hi2c1);
+}
+
+void MX_ADC1_Init(void)
+{
+	ADC_ChannelConfTypeDef sConfig = {0};
+
+	__HAL_RCC_ADC1_CLK_ENABLE();
+
+	hadc1.Instance = ADC1;
+	hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;  //ADC 的工作時脈
+	hadc1.Init.Resolution = ADC_RESOLUTION_12B;  //電壓解析度為 12 位元
+	hadc1.Init.ScanConvMode = DISABLE;  //單一感測器就設定為 DISABLE
+	hadc1.Init.ContinuousConvMode = DISABLE;  //感測器是否持續量測，還是只量測一次就停止
+	hadc1.Init.DiscontinuousConvMode = DISABLE;  //For 多個感測器的情況，是否在每次量測後暫停一下再繼續量測下一個感測器
+	hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;  //不使用外部觸發事件。
+	hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;  //由軟體觸發。
+	hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;  //ADC結果要放在暫存器的靠左還是靠右
+	hadc1.Init.NbrOfConversion = 1;  //感測器數量
+	hadc1.Init.DMAContinuousRequests = DISABLE;  //是否使用 DMA 來傳輸 ADC 資料到記憶體
+	hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV; //每完成一次量測就產生一次中斷
+	if (HAL_ADC_Init(&hadc1) != HAL_OK)
+	{
+		Error_Handler();
+	}
+
+	sConfig.Channel = ADC_CHANNEL_1;  //要量測的感測器連接到哪個 ADC channel。(PA1對應到 ADC_CHANNEL_1)
+	sConfig.Rank = 1;  //在多個感測器的情況下，這個數字代表量測順序。單一感測器就設定為 1。
+	sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+	if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+	{
+		Error_Handler();
+	}
 }
 
 /*************/ 
@@ -176,6 +207,10 @@ static uint32_t GetMode(const char *modeName)
 	if(strcmp(modeName, "AF_OD") == 0)
 	{
 		return GPIO_MODE_AF_OD;
+	}
+	if(strcmp(modeName, "ANALOG") == 0)
+	{
+		return GPIO_MODE_ANALOG;
 	}
 
 	return GPIO_MODE_OUTPUT_PP;
@@ -701,6 +736,122 @@ void initialize_bodyTemp(void)
 		vfs_mount(fs);
 	}
 	/********************/
+}
+
+/**********************/ 
+/*      AD8232        */
+/**********************/ 
+
+AD8232_Config_t AD8232_Config[AD8232_Count] =
+{
+	{
+		.DeviceName = "ad8232",
+		.ADCx = &hadc1,  //目前只能使用 ADC1，故不可修正。
+		.OUT_Config = {
+			.Port = "A",
+			.Pin = 1,
+			.Mode = "ANALOG",
+			.Pull = "NOPULL",
+			.Speed = "FREQ_LOW"
+		},
+		.LOPlus_Config = {
+			.Port = "C",
+			.Pin = 1,
+			.Mode = "INPUT",
+			.Pull = "PULLUP",
+			.Speed = "FREQ_LOW"
+		},
+		.LOMinus_Config = {
+			.Port = "C",
+			.Pin = 2,
+			.Mode = "INPUT",
+			.Pull = "PULLUP",
+			.Speed = "FREQ_LOW"
+		}
+	}
+};
+
+__vf_ssize_t AD8232_read(struct file *file, char *buf, size_t count)
+{
+	const char *device_name = file->fs->mount_point + 4;
+
+	for (uint8_t i = 0; i < AD8232_Count; ++i)
+	{
+		if (strcmp(AD8232_Config[i].DeviceName, device_name) == 0)
+		{
+			uint32_t adc_value = 0;
+
+			if (HAL_ADC_Start(AD8232_Config[i].ADCx) != HAL_OK)
+			{
+				return VF_ERROR;
+			}
+
+			if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, HAL_MAX_DELAY) != HAL_OK)
+			{
+				HAL_ADC_Stop(AD8232_Config[i].ADCx);
+				return VF_ERROR;
+			}
+
+			adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
+			HAL_ADC_Stop(AD8232_Config[i].ADCx);
+
+			return snprintf(buf, count, "%lu\n", (unsigned long)adc_value);
+		}
+	}
+
+	return VF_ERROR;
+}
+
+struct file_operations AD8232_fops =
+{
+	.read = AD8232_read,
+};
+
+void initialize_AD8232(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+	for (uint8_t i = 0; i < AD8232_Count; ++i)
+	{
+		EnableGPIOClock(AD8232_Config[i].OUT_Config.Port);
+		EnableGPIOClock(AD8232_Config[i].LOPlus_Config.Port);
+		EnableGPIOClock(AD8232_Config[i].LOMinus_Config.Port);
+
+		GPIO_InitStruct.Pin = GetGPIOPin(AD8232_Config[i].OUT_Config.Pin);
+		GPIO_InitStruct.Mode = GetMode(AD8232_Config[i].OUT_Config.Mode);
+		GPIO_InitStruct.Pull = GetPull(AD8232_Config[i].OUT_Config.Pull);
+		GPIO_InitStruct.Speed = GetSpeed(AD8232_Config[i].OUT_Config.Speed);
+		HAL_GPIO_Init(GetGPIOPort(AD8232_Config[i].OUT_Config.Port), &GPIO_InitStruct);
+
+		GPIO_InitStruct.Pin = GetGPIOPin(AD8232_Config[i].LOPlus_Config.Pin);
+		GPIO_InitStruct.Mode = GetMode(AD8232_Config[i].LOPlus_Config.Mode);
+		GPIO_InitStruct.Pull = GetPull(AD8232_Config[i].LOPlus_Config.Pull);
+		GPIO_InitStruct.Speed = GetSpeed(AD8232_Config[i].LOPlus_Config.Speed);
+		HAL_GPIO_Init(GetGPIOPort(AD8232_Config[i].LOPlus_Config.Port), &GPIO_InitStruct);
+
+		GPIO_InitStruct.Pin = GetGPIOPin(AD8232_Config[i].LOMinus_Config.Pin);
+		GPIO_InitStruct.Mode = GetMode(AD8232_Config[i].LOMinus_Config.Mode);
+		GPIO_InitStruct.Pull = GetPull(AD8232_Config[i].LOMinus_Config.Pull);
+		GPIO_InitStruct.Speed = GetSpeed(AD8232_Config[i].LOMinus_Config.Speed);
+		HAL_GPIO_Init(GetGPIOPort(AD8232_Config[i].LOMinus_Config.Port), &GPIO_InitStruct);
+	}
+
+	for (uint8_t i = 0; i < AD8232_Count; ++i)
+	{
+		struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
+		if (fs != NULL)
+		{
+			strcpy(fs->name, AD8232_Config[i].DeviceName);
+			fs->mount_point = pvPortMalloc(32);
+			if (fs->mount_point != NULL)
+			{
+				snprintf((char*)fs->mount_point, 32, "dev/%s", AD8232_Config[i].DeviceName);
+				fs->fops = &AD8232_fops;
+				fs->nops = NULL;
+				vfs_mount(fs);
+			}
+		}
+	}
 }
 
 
