@@ -88,9 +88,11 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  MX_I2C1_Init(); 
 
   initialize_LED();
   initialize_DHT22();
+  initialize_bodyTemp();
 
   /* USER CODE END Init */
 

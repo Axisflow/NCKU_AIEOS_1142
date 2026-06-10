@@ -1,9 +1,11 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "FreeRTOS.h"
-#include "stm32f4xx_hal.h"
 #include "stm32f407xx.h"
+#include "stm32f4xx_hal.h"
+#include "FreeRTOS.h"
 #include "drivers.h"
 #include "vfs.h"
 
@@ -13,6 +15,33 @@
 #define DHT22_GPIO_PIN          GPIO_PIN_5
 #define DHT22_GPIO_CLK_ENABLE() __HAL_RCC_GPIOB_CLK_ENABLE()
 
+#define bodyTemp_Count 1
+
+
+/**************/ 
+/*    I2C1    */
+/**************/ 
+
+I2C_HandleTypeDef hi2c1;
+
+void MX_I2C1_Init(void)
+{
+    /* I2C1 clock */
+    __HAL_RCC_I2C1_CLK_ENABLE();
+
+    /* I2C peripheral config */
+    hi2c1.Instance = I2C1;
+    hi2c1.Init.ClockSpeed = 100000; // 100 kHz
+    hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+    hi2c1.Init.OwnAddress1 = 0;
+    hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    hi2c1.Init.OwnAddress2 = 0;
+    hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+    HAL_I2C_Init(&hi2c1);
+}
+
 /*************/ 
 /*    LED    */
 /*************/ 
@@ -21,43 +50,47 @@ const LED_Config_t LED_Configs[LED_COUNT] =
 {
 	{
 		.name = "GreenLED",
-		.GPIO_Port = "D",
-		.GPIO_Pin = "12",
-		.Mode = "OUTPUT_PP",
-		.OutputType = "OUTPUT_PP",
-		.Pull = "NOPULL",
-		.Speed = "FREQ_LOW"
+		.Led_Config = {
+			.Port = "D",
+			.Pin = 12,
+			.Mode = "OUTPUT_PP",
+			.Pull = "NOPULL",
+			.Speed = "FREQ_LOW"
+		}
 	},
 	{
 		.name = "OrangeLED",
-		.GPIO_Port = "D",
-		.GPIO_Pin = "13",
-		.Mode = "OUTPUT_PP",
-		.OutputType = "OUTPUT_PP",
-		.Pull = "NOPULL",
-		.Speed = "FREQ_LOW"
+		.Led_Config = {
+			.Port = "D",
+			.Pin = 13,
+			.Mode = "OUTPUT_PP",
+			.Pull = "NOPULL",
+			.Speed = "FREQ_LOW"
+		}
 	},
 	{
 		.name = "RedLED",
-		.GPIO_Port = "D",
-		.GPIO_Pin = "14",
-		.Mode = "OUTPUT_PP",
-		.OutputType = "OUTPUT_PP",
-		.Pull = "NOPULL",
-		.Speed = "FREQ_LOW"
+		.Led_Config = {
+			.Port = "D",
+			.Pin = 14,
+			.Mode = "OUTPUT_PP",
+			.Pull = "NOPULL",
+			.Speed = "FREQ_LOW"
+		}
 	},
 	{
 		.name = "BlueLED",
-		.GPIO_Port = "D",
-		.GPIO_Pin = "15",
-		.Mode = "OUTPUT_PP",
-		.OutputType = "OUTPUT_PP",
-		.Pull = "NOPULL",
-		.Speed = "FREQ_LOW"
+		.Led_Config = {
+			.Port = "D",
+			.Pin = 15,
+			.Mode = "OUTPUT_PP",
+			.Pull = "NOPULL",
+			.Speed = "FREQ_LOW"
+		}
 	}
 };
 
-static GPIO_TypeDef *LED_GetGPIOPort(const char *portName)
+static GPIO_TypeDef *GetGPIOPort(const char *portName)
 {
 	if (strcmp(portName, "A") == 0)
 	{
@@ -84,40 +117,44 @@ static GPIO_TypeDef *LED_GetGPIOPort(const char *portName)
 		return GPIOE;
 	}
 
-	if (strcmp(portName, "H") == 0)
-	{
-		return GPIOH;
-	}
-
 	return GPIOD;
 }
 
-static uint16_t LED_GetGPIOPin(const char *pinName)
+void EnableGPIOClock(const char *portName)
 {
-	if (strcmp(pinName, "12") == 0)
-	{
-		return GPIO_PIN_12;
-	}
-
-	if (strcmp(pinName, "13") == 0)
-	{
-		return GPIO_PIN_13;
-	}
-
-	if (strcmp(pinName, "14") == 0)
-	{
-		return GPIO_PIN_14;
-	}
-
-	if (strcmp(pinName, "15") == 0)
-	{
-		return GPIO_PIN_15;
-	}
-
-	return GPIO_PIN_0;
+	if (strcmp(portName, "A") == 0)
+		{
+			__HAL_RCC_GPIOA_CLK_ENABLE();
+		}
+		else if (strcmp(portName, "B") == 0)
+		{
+			__HAL_RCC_GPIOB_CLK_ENABLE();
+		}
+		else if (strcmp(portName, "C") == 0)
+		{
+			__HAL_RCC_GPIOC_CLK_ENABLE();
+		}
+		else if (strcmp(portName, "D") == 0)
+		{
+			__HAL_RCC_GPIOD_CLK_ENABLE();
+		}
+		else if (strcmp(portName, "E") == 0)
+		{
+			__HAL_RCC_GPIOE_CLK_ENABLE();
+		}
+		else if (strcmp(portName, "H") == 0)
+		{
+			__HAL_RCC_GPIOH_CLK_ENABLE();
+		}
 }
 
-static uint32_t LED_GetMode(const char *modeName)
+
+static uint16_t GetGPIOPin(uint16_t pinName)
+{
+	return (1U << pinName); // GPIO_PIN_0 = 0x0001, GPIO_PIN_1 = 0x0002, ..., GPIO_PIN_15 = 0x8000
+}
+
+static uint32_t GetMode(const char *modeName)
 {
 	if (strcmp(modeName, "OUTPUT_PP") == 0)
 	{
@@ -128,11 +165,23 @@ static uint32_t LED_GetMode(const char *modeName)
 	{
 		return GPIO_MODE_OUTPUT_OD;
 	}
+	if (strcmp(modeName, "INPUT") == 0)
+	{
+		return GPIO_MODE_INPUT;
+	}
+	if(strcmp(modeName, "AF_PP") == 0)
+	{
+		return GPIO_MODE_AF_PP;
+	}
+	if(strcmp(modeName, "AF_OD") == 0)
+	{
+		return GPIO_MODE_AF_OD;
+	}
 
 	return GPIO_MODE_OUTPUT_PP;
 }
 
-static uint32_t LED_GetPull(const char *pullName)
+static uint32_t GetPull(const char *pullName)
 {
 	if (strcmp(pullName, "NOPULL") == 0)
 	{
@@ -152,7 +201,7 @@ static uint32_t LED_GetPull(const char *pullName)
 	return GPIO_NOPULL;
 }
 
-static uint32_t LED_GetSpeed(const char *speedName)
+static uint32_t GetSpeed(const char *speedName)
 {
 	if (strcmp(speedName, "FREQ_LOW") == 0)
 	{
@@ -178,13 +227,14 @@ static uint32_t LED_GetSpeed(const char *speedName)
 }
 
 // implement the read function in the struct file_operations for the LED driver
-__vf_ssize_t LED_read(struct file *file, char *buf, size_t count) {
-	const char* led_name = file->fs->mount_point;
+__vf_ssize_t LED_read(struct file *file, char *buf, size_t count) 
+{
+	const char* led_name = file->fs->mount_point + 4; // 跳過 "dev/" 前綴，取得 LED 名稱
 
 	for(uint8_t i=0;i<LED_COUNT;++i) {
 		if(strcmp(LED_Configs[i].name, led_name) == 0) {
-			GPIO_TypeDef* GPIO_Port = LED_GetGPIOPort(LED_Configs[i].GPIO_Port);
-			uint16_t GPIO_Pin = LED_GetGPIOPin(LED_Configs[i].GPIO_Pin);
+			GPIO_TypeDef* GPIO_Port = GetGPIOPort(LED_Configs[i].Led_Config.Port);
+			uint16_t GPIO_Pin = GetGPIOPin(LED_Configs[i].Led_Config.Pin);
 			buf[0] = HAL_GPIO_ReadPin(GPIO_Port, GPIO_Pin) == GPIO_PIN_SET ? '1' : '0';
 			return 1; // Return the number of bytes read
 		}
@@ -193,13 +243,15 @@ __vf_ssize_t LED_read(struct file *file, char *buf, size_t count) {
 }
 
 // implement the write function in the struct file_operations for the LED driver
-__vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
-    const char* led_name = file->fs->mount_point; // The mount point is the LED name
+__vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) 
+{
+    const char* led_name = file->fs->mount_point + 4; // 跳過 "dev/" 前綴，取得 LED 名稱
 	
+
 	for(uint8_t i=0;i<LED_COUNT;++i) {
 		if(strcmp(LED_Configs[i].name, led_name) == 0) {
-			GPIO_TypeDef* GPIO_Port = LED_GetGPIOPort(LED_Configs[i].GPIO_Port);
-			uint16_t GPIO_Pin = LED_GetGPIOPin(LED_Configs[i].GPIO_Pin);
+			GPIO_TypeDef* GPIO_Port = GetGPIOPort(LED_Configs[i].Led_Config.Port);
+			uint16_t GPIO_Pin = GetGPIOPin(LED_Configs[i].Led_Config.Pin);
 			
 			if(count > 0 && buf[0] == '1') {
 				HAL_GPIO_WritePin(GPIO_Port, GPIO_Pin, GPIO_PIN_SET); // Turn on the LED
@@ -215,7 +267,8 @@ __vf_ssize_t LED_write(struct file *file, const char *buf, size_t count) {
 }
 
 // Define the file operations for the LED driver
-struct file_operations LED_fops={
+struct file_operations LED_fops=
+{
 	.read = LED_read,
 	.write = LED_write
 };
@@ -227,28 +280,12 @@ void initialize_LED(void)
 
 	for (uint8_t i = 0; i < LED_COUNT; ++i)
 	{
-		if (strcmp(LED_Configs[i].GPIO_Port, "A") == 0)
-		{
-			__HAL_RCC_GPIOA_CLK_ENABLE();
-		}
-		else if (strcmp(LED_Configs[i].GPIO_Port, "B") == 0)
-		{
-			__HAL_RCC_GPIOB_CLK_ENABLE();
-		}
-		else if (strcmp(LED_Configs[i].GPIO_Port, "C") == 0)
-		{
-			__HAL_RCC_GPIOC_CLK_ENABLE();
-		}
-		else if (strcmp(LED_Configs[i].GPIO_Port, "D") == 0)
-		{
-			__HAL_RCC_GPIOD_CLK_ENABLE();
-		}
-
-		GPIO_InitStruct.Pin = LED_GetGPIOPin(LED_Configs[i].GPIO_Pin);
-		GPIO_InitStruct.Mode = LED_GetMode(LED_Configs[i].Mode);
-		GPIO_InitStruct.Pull = LED_GetPull(LED_Configs[i].Pull);
-		GPIO_InitStruct.Speed = LED_GetSpeed(LED_Configs[i].Speed);
-		HAL_GPIO_Init(LED_GetGPIOPort(LED_Configs[i].GPIO_Port), &GPIO_InitStruct);
+		EnableGPIOClock(LED_Configs[i].Led_Config.Port);
+		GPIO_InitStruct.Pin = GetGPIOPin(LED_Configs[i].Led_Config.Pin);
+		GPIO_InitStruct.Mode = GetMode(LED_Configs[i].Led_Config.Mode);
+		GPIO_InitStruct.Pull = GetPull(LED_Configs[i].Led_Config.Pull);
+		GPIO_InitStruct.Speed = GetSpeed(LED_Configs[i].Led_Config.Speed);
+		HAL_GPIO_Init(GetGPIOPort(LED_Configs[i].Led_Config.Port), &GPIO_InitStruct);
 	}
 	/*************************/
 
@@ -267,8 +304,6 @@ void initialize_LED(void)
 	/********************/
 
 }
-
-
 
 
 
@@ -493,6 +528,183 @@ void initialize_DHT22(void)
 		}
 	}
 }
+
+/**********************/ 
+/*  Body Temperature  */
+/**********************/ 
+
+bodyTemp_Config_t bodyTemp_Config[bodyTemp_Count] =
+{
+	{
+    .DeviceName     = "bodyTemp1",
+    .I2C_Address    = 0x48,
+    .I2Cx           = &hi2c1,  //目前只能使用 I2C1，故不可修正。
+	.SCL_Config = {
+		.Port = "B",
+		.Pin = 6,
+		.Mode = "AF_OD",
+		.Pull = "PULLUP",
+		.Speed = "FREQ_VERY_HIGH"
+	},
+	.SDA_Config = {
+		.Port = "B",
+		.Pin = 7,
+		.Mode = "AF_OD",
+		.Pull = "PULLUP",
+		.Speed = "FREQ_VERY_HIGH"
+	},
+	.ALERT_Config = {
+		.Port = "B",
+		.Pin = 8,
+		.Mode = "INPUT",
+		.Pull = "NOPULL",
+		.Speed = "FREQ_VERY_HIGH"
+	},
+    .ShutdownMode   = 0,
+    .InterruptMode  = 0,
+    .OSPolarity     = 0,
+    .FaultQueue     = 0,
+    .TimeoutEnable  = 1,
+    .THYST          = 37.5f,
+    .TOS            = 38.0f
+	}
+};
+
+// implement the read function in the struct file_operations for the body Temperature driver
+__vf_ssize_t bodyTemp_read(struct file *file, char *buf, size_t count)
+{
+	const char *bodyTemp_name = file->fs->mount_point + 4; // 跳過 "dev/" 前綴，取得 body Temperature 設備名稱
+
+    for(uint8_t i = 0; i < bodyTemp_Count; i++)
+    {
+        if(strcmp(bodyTemp_Config[i].DeviceName, bodyTemp_name) == 0)
+        {
+            uint8_t raw[2] = {0};
+            int16_t temp_raw;
+            float temperature;
+
+            /* Read 2 bytes from temperature register (0x00) */
+            if(HAL_I2C_Mem_Read(
+                    bodyTemp_Config[i].I2Cx,
+                    bodyTemp_Config[i].I2C_Address << 1,
+                    0x00,
+                    I2C_MEMADD_SIZE_8BIT,
+                    raw,
+                    2,
+                    HAL_MAX_DELAY) != HAL_OK)
+            {
+                return VF_ERROR;
+            }
+
+            /* Convert raw data */
+            temp_raw = (int16_t)((raw[0] << 8) | raw[1]);  //若溫度為負數(用二補數表示)，需要轉型成int16_t，這樣解讀值時就會自動做二的補數轉回可讀負數
+            temperature = temp_raw * 0.00390625f; // 1/256 resolution
+
+            /* Return as string */
+            int len = snprintf(buf, count, "%.2f", temperature);
+
+            return len;
+        }
+    }
+
+    return VF_ERROR;
+}
+
+// Define the file operations for the body Temperature driver
+struct file_operations bodyTemp_fops={
+	.read = bodyTemp_read,
+};
+
+void initialize_bodyTemp(void)
+{
+    /*Hardware initialization*/
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    for(uint8_t i = 0; i < bodyTemp_Count; i++)
+    {
+        /*--------------------------------------------------
+         * GPIO Clock
+         *-------------------------------------------------*/
+        EnableGPIOClock(bodyTemp_Config[i].SCL_Config.Port);
+		EnableGPIOClock(bodyTemp_Config[i].SDA_Config.Port);
+		if (bodyTemp_Config[i].ALERT_Config.Port != NULL)
+		{	
+			EnableGPIOClock(bodyTemp_Config[i].ALERT_Config.Port);
+		}
+
+        /*--------------------------------------------------
+         * SCL
+         *-------------------------------------------------*/
+        GPIO_InitStruct.Pin = GetGPIOPin(bodyTemp_Config[i].SCL_Config.Pin);
+        GPIO_InitStruct.Mode = GetMode(bodyTemp_Config[i].SCL_Config.Mode); 
+        GPIO_InitStruct.Pull = GetPull(bodyTemp_Config[i].SCL_Config.Pull);
+        GPIO_InitStruct.Speed = GetSpeed(bodyTemp_Config[i].SCL_Config.Speed);
+		GPIO_InitStruct.Alternate = GPIO_AF4_I2C1; //把GPIO腳接到I2C1模組
+		
+
+        HAL_GPIO_Init(GetGPIOPort(bodyTemp_Config[i].SCL_Config.Port), &GPIO_InitStruct);
+
+		/*--------------------------------------------------
+		 * SDA
+		 *-------------------------------------------------*/
+		GPIO_InitStruct.Pin = GetGPIOPin(bodyTemp_Config[i].SDA_Config.Pin);
+		GPIO_InitStruct.Mode = GetMode(bodyTemp_Config[i].SDA_Config.Mode);
+		GPIO_InitStruct.Pull = GetPull(bodyTemp_Config[i].SDA_Config.Pull);
+		GPIO_InitStruct.Speed = GetSpeed(bodyTemp_Config[i].SDA_Config.Speed);
+		GPIO_InitStruct.Alternate = GPIO_AF4_I2C1; //把GPIO腳接到I2C1模組
+		
+
+		HAL_GPIO_Init(GetGPIOPort(bodyTemp_Config[i].SDA_Config.Port), &GPIO_InitStruct);
+
+        /*--------------------------------------------------
+         * ALERT
+         *-------------------------------------------------*/
+        GPIO_InitStruct.Pin = GetGPIOPin(bodyTemp_Config[i].ALERT_Config.Pin);
+        GPIO_InitStruct.Mode = GetMode(bodyTemp_Config[i].ALERT_Config.Mode);
+        GPIO_InitStruct.Pull = GetPull(bodyTemp_Config[i].ALERT_Config.Pull);
+        GPIO_InitStruct.Speed = GetSpeed(bodyTemp_Config[i].ALERT_Config.Speed);
+
+        HAL_GPIO_Init(GetGPIOPort(bodyTemp_Config[i].ALERT_Config.Port), &GPIO_InitStruct);
+
+        /*--------------------------------------------------
+         * MAX30205 Config Register
+         *-------------------------------------------------*/
+        uint8_t config = 0;
+
+        config |= (bodyTemp_Config[i].ShutdownMode);
+        config |= (bodyTemp_Config[i].InterruptMode << 1);
+        config |= (bodyTemp_Config[i].OSPolarity << 2);
+        config |= (bodyTemp_Config[i].FaultQueue << 3);
+        config |= (bodyTemp_Config[i].TimeoutEnable << 5);
+
+        HAL_I2C_Mem_Write(
+            bodyTemp_Config[i].I2Cx,
+            bodyTemp_Config[i].I2C_Address << 1, //將原本的7-bit地址左移1位，並在最低位添加0表示為寫入操作
+            0x01,  //MAX30205的Config Register地址
+            I2C_MEMADD_SIZE_8BIT,  //Config Register地址為8位元，使STM32知道如何去組成傳送資料(Device Address + Register Address + Data)
+            &config,
+            1,   //寫入1個byte到config register
+            HAL_MAX_DELAY  //等待直到寫入完成，或發生錯誤
+        );
+    }
+    /*************************/
+    
+	/*VFS initialization*/
+	for (uint8_t i = 0; i < bodyTemp_Count; ++i)
+	{
+		struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
+		strcpy(fs->name, bodyTemp_Config[i].DeviceName);
+		fs->mount_point = pvPortMalloc(32);
+		snprintf((char*)fs->mount_point, 32, "dev/%s", bodyTemp_Config[i].DeviceName);
+		fs->fops = &bodyTemp_fops;
+		fs->nops = NULL;
+		vfs_mount(fs);
+	}
+	/********************/
+}
+
+
+
 
 void delay_us(uint32_t us)
 {
