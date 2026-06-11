@@ -22,10 +22,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-
+#include "program_loader.h"
 #include "drivers.h"
+#include "vfs.h"
+#include "vfsio.h"
 #include "vfs_default.h"
 #include "vfs_fatfs.h"
 #include "vfs_uart2_tty.h"
@@ -38,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define INIT_SCRIPT_PATH "/usr/init.sh"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,12 +66,33 @@ static void MX_GPIO_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void StartupTask(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int _write(int file, char *ptr, int len)
+{
+  HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+  return len;
+}
 
+static void StartupTask(void *argument)
+{
+    printf("StartupTask start\r\n");
+
+    printf("Run init script: %s\r\n", INIT_SCRIPT_PATH);
+
+    int result = ProgramLoader_RunScript(INIT_SCRIPT_PATH);
+
+    if (result == 0) {
+        printf("Init script finished\r\n");
+    } else {
+        printf("Init script failed, result=%d\r\n", result);
+    }
+
+    vTaskDelete(NULL);
+}
 /* USER CODE END 0 */
 
 /**
@@ -93,6 +117,7 @@ int main(void)
 
   /* 按需啟用感測器初始化函式 */
   initialize_LED();
+  initialize_DHT11();
   // initialize_DHT22();
   // initialize_bodyTemp();
   // initialize_AD8232();
@@ -115,7 +140,8 @@ int main(void)
   mount_default(&rom_fs, "");
   mount_fatfs(&sdcard_fs, "fatfs");
   mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
-  vTaskStartScheduler(); /* Start FreeRTOS scheduler */
+  xTaskCreate(StartupTask, "StartupTask", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
+  vTaskStartScheduler();
   unmount_uart2_tty(&uart2_tty_fs);
   unmount_fatfs(&sdcard_fs);
   unmount_default(&rom_fs);
@@ -324,6 +350,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : DHT11_Pin */
+  GPIO_InitStruct.Pin = DHT11_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(DHT11_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SD_CS_Pin */
   GPIO_InitStruct.Pin = SD_CS_Pin;
