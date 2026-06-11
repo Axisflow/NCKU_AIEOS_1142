@@ -5,6 +5,7 @@
 #include "FreeRTOS.h"
 #include "drivers.h"
 #include "vfs.h"
+#include "dht11.h"
 
 #define LED_COUNT 4
 
@@ -261,6 +262,17 @@ static uint32_t GetSpeed(const char *speedName)
 	return GPIO_SPEED_FREQ_LOW;
 }
 
+static const char *GetNameFromMountPoint(const char *mount_point)
+{
+    const char *slash = strrchr(mount_point, '/');
+
+    if (slash != NULL) {
+        return slash + 1;
+    }
+
+    return mount_point;
+}
+
 // implement the read function in the struct file_operations for the LED driver
 __vf_ssize_t LED_read(struct file *file, char *buf, size_t count) 
 {
@@ -340,10 +352,91 @@ void initialize_LED(void)
 
 }
 
-
-
 /************/ 
 /*  DHT 11  */
+/************/ 
+static DHT11_HandleTypeDef g_dht11;
+
+static __vf_ssize_t DHT11_read(struct file *file, char *buf, size_t count)
+{
+    const char *dev_name = GetNameFromMountPoint(file->fs->mount_point);
+
+    int temp = 0;
+    int hum = 0;
+
+    DHT11_Status status = DHT11_ReadCached(&g_dht11, &temp, &hum);
+
+    if (status != DHT11_OK)
+    {
+        printf("DHT11 read failed, status=%d (%s)\r\n",
+               status, DHT11_StatusString(status));
+        return VF_ERROR;
+    }
+
+    if (strcmp(dev_name, "temp1") == 0)
+    {
+        return snprintf(buf, count, "%d\r\n", temp);
+    }
+
+    if (strcmp(dev_name, "hum1") == 0)
+    {
+        return snprintf(buf, count, "%d\r\n", hum);
+    }
+
+    return VF_NOT_FOUND;
+}
+
+struct file_operations DHT11_fops =
+{
+    .read = DHT11_read,
+    .write = NULL
+};
+
+void initialize_DHT11(void)
+{
+    DHT11_Init(&g_dht11, DHT11_GPIO_Port, DHT11_Pin);
+
+    const char *dev_names[] =
+    {
+        "temp1",
+        "hum1"
+    };
+
+    for (uint8_t i = 0; i < 2; ++i)
+    {
+        struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
+
+        if (fs == NULL)
+        {
+            printf("DHT11 fs malloc failed\r\n");
+            return;
+        }
+
+        memset(fs, 0, sizeof(struct file_system));
+
+        strcpy(fs->name, dev_names[i]);
+
+        fs->mount_point = pvPortMalloc(32);
+
+        if (fs->mount_point == NULL)
+        {
+            printf("DHT11 mount_point malloc failed\r\n");
+            return;
+        }
+
+        snprintf((char *)fs->mount_point, 32, "dev/%s", dev_names[i]);
+
+        fs->fops = &DHT11_fops;
+        fs->nops = NULL;
+
+        vfs_mount(fs);
+    }
+
+    printf("DHT11 mounted: dev/temp0, dev/hum0\r\n");
+}
+
+/************/ 
+/*  DHT 22  */
 /************/ 
 static void DHT22_SetPinOutput(void)
 {

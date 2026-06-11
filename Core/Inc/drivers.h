@@ -70,6 +70,7 @@ typedef struct
 } bodyTemp_Config_t;
 
 void initialize_LED(void);
+void initialize_DHT11(void);
 void initialize_DHT22(void);
 void initialize_bodyTemp(void);
 void initialize_AD8232(void);
