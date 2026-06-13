@@ -701,6 +701,25 @@ bodyTemp_Config_t bodyTemp_Config[bodyTemp_Count] =
 	}
 };
 
+static void I2C1_ScanAndReport(I2C_HandleTypeDef *hi2c)
+{
+	uint8_t found = 0;
+
+	for (uint8_t addr = 0x08; addr <= 0x77; ++addr)
+	{
+		if (HAL_I2C_IsDeviceReady(hi2c, addr << 1, 2, 10) == HAL_OK)
+		{
+			printf("I2C device found at 0x%02X\r\n", addr);
+			found++;
+		}
+	}
+
+	if (found == 0)
+	{
+		printf("I2C scan: no device acknowledged\r\n");
+	}
+}
+
 // implement the read function in the struct file_operations for the body Temperature driver
 __vf_ssize_t bodyTemp_read(struct file *file, char *buf, size_t count)
 {
@@ -715,24 +734,35 @@ __vf_ssize_t bodyTemp_read(struct file *file, char *buf, size_t count)
             float temperature;
 
             /* Read 2 bytes from temperature register (0x00) */
-            if(HAL_I2C_Mem_Read(
-                    bodyTemp_Config[i].I2Cx,
-                    bodyTemp_Config[i].I2C_Address << 1,
-                    0x00,
-                    I2C_MEMADD_SIZE_8BIT,
-                    raw,
-                    2,
-                    HAL_MAX_DELAY) != HAL_OK)
-            {
-                return VF_ERROR;
-            }
+			HAL_StatusTypeDef status;
+			status = HAL_I2C_Mem_Read(
+			    bodyTemp_Config[i].I2Cx,
+			    bodyTemp_Config[i].I2C_Address << 1,
+			    0x00,
+			    I2C_MEMADD_SIZE_8BIT,
+			    raw,
+			    2,
+			    1000
+			);
+			if(status != HAL_OK)
+			{
+				uint32_t err = HAL_I2C_GetError(bodyTemp_Config[i].I2Cx);
+				printf("MAX30205 read failed addr=0x%02X status=%d err=0x%08lX\r\n",
+						bodyTemp_Config[i].I2C_Address,
+						(int)status,
+						(unsigned long)err);
+				return VF_ERROR;
+			} else {
+				printf("status=%d raw=%02X %02X\r\n",
+			       status, raw[0], raw[1]);
+			}
 
             /* Convert raw data */
-            temp_raw = (int16_t)((raw[0] << 8) | raw[1]);  //若溫度為負數(用二補數表示)，需要轉型成int16_t，這樣解讀值時就會自動做二的補數轉回可讀負數
+            temp_raw = (int16_t)(((uint16_t)raw[0] << 8) | raw[1]);  //若溫度為負數(用二補數表示)，需要轉型成int16_t，這樣解讀值時就會自動做二的補數轉回可讀負數
             temperature = temp_raw * 0.00390625f; // 1/256 resolution
 
             /* Return as string */
-            int len = snprintf(buf, count, "%d", temperature);
+			int len = snprintf(buf, count, "%d\n", (int)temperature);
 
             return len;
         }
@@ -808,7 +838,24 @@ void initialize_bodyTemp(void)
         config |= (bodyTemp_Config[i].FaultQueue << 3);
         config |= (bodyTemp_Config[i].TimeoutEnable << 5);
 
-        HAL_I2C_Mem_Write(
+		I2C1_ScanAndReport(bodyTemp_Config[i].I2Cx);
+
+		HAL_StatusTypeDef ready_status = HAL_I2C_IsDeviceReady(
+				bodyTemp_Config[i].I2Cx,
+				bodyTemp_Config[i].I2C_Address << 1,
+				3,
+				100);
+
+		if (ready_status != HAL_OK)
+		{
+			uint32_t err = HAL_I2C_GetError(bodyTemp_Config[i].I2Cx);
+			printf("MAX30205 init not ready addr=0x%02X status=%d err=0x%08lX\r\n",
+					bodyTemp_Config[i].I2C_Address,
+					(int)ready_status,
+					(unsigned long)err);
+		}
+
+        HAL_StatusTypeDef write_status = HAL_I2C_Mem_Write(
             bodyTemp_Config[i].I2Cx,
             bodyTemp_Config[i].I2C_Address << 1, //將原本的7-bit地址左移1位，並在最低位添加0表示為寫入操作
             0x01,  //MAX30205的Config Register地址
@@ -817,6 +864,15 @@ void initialize_bodyTemp(void)
             1,   //寫入1個byte到config register
             HAL_MAX_DELAY  //等待直到寫入完成，或發生錯誤
         );
+
+		if (write_status != HAL_OK)
+		{
+			uint32_t err = HAL_I2C_GetError(bodyTemp_Config[i].I2Cx);
+			printf("MAX30205 config write failed addr=0x%02X status=%d err=0x%08lX\r\n",
+					bodyTemp_Config[i].I2C_Address,
+					(int)write_status,
+					(unsigned long)err);
+		}
     }
     /*************************/
     
@@ -869,33 +925,65 @@ AD8232_Config_t AD8232_Config[AD8232_Count] =
 
 __vf_ssize_t AD8232_read(struct file *file, char *buf, size_t count)
 {
-	const char *device_name = file->fs->mount_point + 4;
+    const char *device_name = file->fs->mount_point + 4;
 
-	for (uint8_t i = 0; i < AD8232_Count; ++i)
-	{
-		if (strcmp(AD8232_Config[i].DeviceName, device_name) == 0)
-		{
-			uint32_t adc_value = 0;
+    for (uint8_t i = 0; i < AD8232_Count; ++i)
+    {
+        if (strcmp(AD8232_Config[i].DeviceName, device_name) == 0)
+        {
+            uint32_t beat_count = 0;
+            uint8_t peak_flag = 0;
 
-			if (HAL_ADC_Start(AD8232_Config[i].ADCx) != HAL_OK)
-			{
-				return VF_ERROR;
-			}
+            const uint32_t threshold = 4060; // 需依實際 ECG 調整
 
-			if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, HAL_MAX_DELAY) != HAL_OK)
-			{
-				HAL_ADC_Stop(AD8232_Config[i].ADCx);
-				return VF_ERROR;
-			}
+            uint32_t start_time = HAL_GetTick();
 
-			adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
-			HAL_ADC_Stop(AD8232_Config[i].ADCx);
+            while ((HAL_GetTick() - start_time) < 5000)
+            {
+                uint32_t adc_value = 0;
 
-			return snprintf(buf, count, "%lu\n", (unsigned long)adc_value);
-		}
-	}
 
-	return VF_ERROR;
+                if (HAL_ADC_Start(AD8232_Config[i].ADCx) != HAL_OK)
+                {
+                    return VF_ERROR;
+                }
+
+                if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) != HAL_OK)
+                {
+                    HAL_ADC_Stop(AD8232_Config[i].ADCx);
+                    return VF_ERROR;
+                }
+
+                adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
+
+                printf("%d\n", adc_value);
+
+                HAL_ADC_Stop(AD8232_Config[i].ADCx);
+
+                // ===== R peak detect =====
+                if (adc_value > threshold && peak_flag == 0)
+                {
+                    peak_flag = 1;
+                    beat_count++;
+                }
+
+                if (adc_value < threshold - 200)
+                {
+                    peak_flag = 0;
+                }
+
+                HAL_Delay(5); // ~200Hz sampling
+            }
+
+            // ===== BPM evaluation =====
+            uint32_t bpm = beat_count * 12;
+            printf("%d\n", beat_count);
+
+            return snprintf(buf, count, "%lu BPM\n", (unsigned long)bpm);
+        }
+    }
+
+    return VF_ERROR;
 }
 
 struct file_operations AD8232_fops =

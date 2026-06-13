@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define INIT_SCRIPT_PATH "/ad8232_test.sh"
+#define INIT_SCRIPT_PATH "/bodytemp.sh"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -112,16 +112,6 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  MX_I2C1_Init(); 
-  MX_ADC1_Init();
-
-  /* 按需啟用感測器初始化函式 */
-  initialize_LED();
-  initialize_DHT11();
-  // initialize_DHT22();
-  // initialize_bodyTemp();
-  // initialize_AD8232();
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -136,7 +126,16 @@ int main(void)
   MX_SPI2_Init();
   MX_USART2_UART_Init();
   MX_FATFS_Init();
+  MX_I2C1_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  /* 按需啟用感測器初始化函式 */
+  // initialize_LED();
+  // initialize_DHT11();
+  // initialize_DHT22();
+  initialize_bodyTemp();
+  initialize_AD8232();
+
   mount_default(&rom_fs, "");
   mount_fatfs(&sdcard_fs, "fatfs");
   mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
