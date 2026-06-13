@@ -1,13 +1,6 @@
 #ifndef __DRIVERS_H
 #define __DRIVERS_H
 
-#ifndef HAL_I2C_MODULE_ENABLED
-#define HAL_I2C_MODULE_ENABLED
-#endif
-#ifndef HAL_ADC_MODULE_ENABLED
-#define HAL_ADC_MODULE_ENABLED
-#endif
-
 #include "main.h"
 #include <stdint.h>
 #include <stdbool.h>

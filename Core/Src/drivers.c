@@ -39,7 +39,10 @@ void MX_I2C1_Init(void)
     hi2c1.Init.OwnAddress2 = 0;
     hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
     hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-    HAL_I2C_Init(&hi2c1);
+    if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+    {
+    	Error_Handler();
+    }
 }
 
 void MX_ADC1_Init(void)
@@ -729,7 +732,7 @@ __vf_ssize_t bodyTemp_read(struct file *file, char *buf, size_t count)
             temperature = temp_raw * 0.00390625f; // 1/256 resolution
 
             /* Return as string */
-            int len = snprintf(buf, count, "%.2f", temperature);
+            int len = snprintf(buf, count, "%d", temperature);
 
             return len;
         }
