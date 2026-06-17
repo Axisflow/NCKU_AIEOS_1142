@@ -46,12 +46,12 @@ typedef enum {
 } vf_result_t;
 
 vf_result_t vf_open(struct file *file, const char *path, unsigned int flags);
-__vf_ssize_t vf_read(struct file *file, char *buf, size_t btr);
-__vf_ssize_t vf_write(struct file *file, const char *buf, size_t btw);
+__vf_ssize_t vf_read(struct file *file, char *buf, size_t count);
+__vf_ssize_t vf_write(struct file *file, const char *buf, size_t count);
 loff_t vf_llseek(struct file *file, loff_t offset, int whence);
 vf_result_t vf_fsync(struct file *file, int datasync);
 poll_t vf_poll(struct file *file, poll_t events, int timeout_ms);
-loff_t vf_readdir (struct file *file, char *path, size_t path_max_len);
+loff_t vf_readdir(struct file *file, char *buf, size_t count);
 vf_result_t vf_close(struct file *file);
 
 typedef unsigned int umode_t;
@@ -65,10 +65,10 @@ struct file_operations {
     int (*open)(struct file *file, const char *path);
 
     // Read from a file. Returns the number of bytes read, or a negative error code.
-    __vf_ssize_t (*read)(struct file *file, char *buf, size_t count);
+    __vf_ssize_t (*read)(struct file *file, char *buf, size_t btr);
 
     // Write to a file. Returns the number of bytes written, or a negative error code.
-    __vf_ssize_t (*write)(struct file *file, const char *buf, size_t count);
+    __vf_ssize_t (*write)(struct file *file, const char *buf, size_t btw);
 
     // Change the file position. Returns the new file position, or a negative error code.
     loff_t (*llseek)(struct file *file, loff_t offset, int whence);
@@ -80,7 +80,7 @@ struct file_operations {
     poll_t (*poll)(struct file *file, poll_t events, int timeout_ms);
 
     // Iterate over directory entries. Returns the next entry position, or a negative error code.
-    loff_t (*iterate_shared) (struct file *file, char *buf, size_t btr);
+    loff_t (*iterate_shared) (struct file *file, char *path, size_t path_max);
 
     // Close a file (and release any associated or [m]allocated resources). Returns 0 on success, or a negative error code.
     int (*close)(struct file *file);
@@ -118,14 +118,14 @@ typedef vf_result_t vfs_result_t;
 // Mount a file system to the VFS
 vfs_result_t vfs_mount(const struct file_system *fs);
 
-// Normalize an input path, e.g., "/path//to///dir////" -> "path/to/dir"
+// Normalize an input path, e.g., "/path//to///file////" -> "path/to/file"
 vfs_result_t vfs_normalize(char *target);
 
 // Look up a file system by its mount point or its subdirectories
 const struct file_system *vfs_lookup(const char *path);
 
 // Emit the current directory entry name to the path buffer and update the record length accordingly
-vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t dst_max_len, size_t *reclen);
+vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t count, size_t *reclen);
 
 // Unmount a file system from the VFS
 vfs_result_t vfs_unmount(const struct file_system *fs);

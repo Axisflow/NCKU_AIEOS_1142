@@ -86,13 +86,13 @@ const struct file_system *vfs_lookup(const char *path) {
     return NULL; // Not found
 }
 
-vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t dst_max_len, size_t *reclen) {
-    if (!src || !dst || !reclen || dst_max_len <= 0 || *reclen > strlen(src)) {
+vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t count, size_t *reclen) {
+    if (!src || !dst || !reclen || count <= 0 || *reclen > strlen(src)) {
         return VF_INVALID; // Invalid parameters
     }
 
     const char *src_begin = src + strlen(src) - *reclen;
-    size_t emit_len = *reclen < (dst_max_len - 1) ? *reclen : dst_max_len - 1;
+    size_t emit_len = *reclen < (count - 1) ? *reclen : count - 1;
     strncpy(dst, src_begin, emit_len);
     dst[emit_len] = '\0'; // Null-terminate the emitted entry name
     return VF_SUCCESS;
@@ -149,7 +149,7 @@ vf_result_t vf_close(struct file *fp) {
 }
 
 
-__vf_ssize_t vf_read(struct file *fp, char *buf, size_t btr) {
+__vf_ssize_t vf_read(struct file *fp, char *buf, size_t count) {
     if (!fp) {
         return VF_ERROR; // Invalid file
     }
@@ -158,10 +158,10 @@ __vf_ssize_t vf_read(struct file *fp, char *buf, size_t btr) {
         return VF_INVALID; // No read operation defined
     }
 
-    return fp->fs->fops->read(fp, buf, btr);
+    return fp->fs->fops->read(fp, buf, count);
 }
 
-__vf_ssize_t vf_write(struct file *fp, const char *buf, size_t btw) {
+__vf_ssize_t vf_write(struct file *fp, const char *buf, size_t count) {
     if (!fp) {
         return VF_ERROR; // Invalid file
     }
@@ -170,7 +170,7 @@ __vf_ssize_t vf_write(struct file *fp, const char *buf, size_t btw) {
         return VF_INVALID; // No write operation defined
     }
 
-    return fp->fs->fops->write(fp, buf, btw);
+    return fp->fs->fops->write(fp, buf, count);
 }
 
 loff_t vf_llseek(struct file *file, loff_t offset, int whence) {
@@ -213,7 +213,7 @@ poll_t vf_poll(struct file *file, poll_t events, int timeout_ms) {
     return file->fs->fops->poll(file, events, timeout_ms);
 }
 
-loff_t vf_readdir (struct file *file, char *path, size_t path_max_len) {
+loff_t vf_readdir (struct file *file, char *buf, size_t count) {
     if (!file) {
         return (loff_t) VF_ERROR; // Invalid file
     }
@@ -222,7 +222,7 @@ loff_t vf_readdir (struct file *file, char *path, size_t path_max_len) {
         return (loff_t) VF_INVALID; // No readdir operation defined
     }
 
-    return file->fs->fops->iterate_shared(file, path, path_max_len);
+    return file->fs->fops->iterate_shared(file, buf, count);
 }
 
 vf_result_t vf_mkdir(const char *path, const char *name, umode_t mode) {
