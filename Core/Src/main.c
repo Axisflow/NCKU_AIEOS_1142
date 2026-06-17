@@ -73,8 +73,20 @@ static void StartupTask(void *argument);
 /* USER CODE BEGIN 0 */
 int _write(int file, char *ptr, int len)
 {
-  HAL_UART_Transmit(&huart2, (uint8_t *)ptr, len, HAL_MAX_DELAY);
-  return len;
+  struct file uart2_tty_file;
+  vf_result_t res = vf_open(&uart2_tty_file, "dev/uart2_tty", 0);
+  if (res != FR_OK) {
+      return res;
+  }
+
+  res = vf_write(&uart2_tty_file, ptr, (size_t)len);
+  if (res != FR_OK) {
+      vf_close(&uart2_tty_file);
+      return res;
+  }
+
+  vf_close(&uart2_tty_file);
+  return res;
 }
 
 static void StartupTask(void *argument)
@@ -83,7 +95,10 @@ static void StartupTask(void *argument)
 
     printf("Run init script: %s\r\n", INIT_SCRIPT_PATH);
 
-    int result = ProgramLoader_RunScript(INIT_SCRIPT_PATH);
+    char path_buffer[256];
+    snprintf(path_buffer, sizeof(path_buffer), "%s%s", "home", INIT_SCRIPT_PATH);
+
+    int result = ProgramLoader_RunScript(path_buffer);
 
     if (result == 0) {
         printf("Init script finished\r\n");
@@ -138,7 +153,7 @@ int main(void)
   initialize_AD8232();
 
   mount_default(&rom_fs, "");
-  mount_fatfs(&sdcard_fs, "fatfs");
+  mount_fatfs(&sdcard_fs, "home");
   mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
   xTaskCreate(StartupTask, "StartupTask", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
   vTaskStartScheduler();
