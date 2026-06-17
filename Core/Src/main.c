@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define INIT_SCRIPT_PATH "/ad8232.sh"
+#define INIT_SCRIPT_PATH "/init.sh"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -75,12 +75,12 @@ int _write(int file, char *ptr, int len)
 {
   struct file uart2_tty_file;
   vf_result_t res = vf_open(&uart2_tty_file, "dev/uart2_tty", 0);
-  if (res != FR_OK) {
+  if (res != VF_SUCCESS) {
       return res;
   }
 
   res = vf_write(&uart2_tty_file, ptr, (size_t)len);
-  if (res != FR_OK) {
+  if (res != VF_SUCCESS) {
       vf_close(&uart2_tty_file);
       return res;
   }

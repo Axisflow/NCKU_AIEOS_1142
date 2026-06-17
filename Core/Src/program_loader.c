@@ -17,7 +17,7 @@ int ProgramLoader_RunScript(const char *path)
 
     res = vf_open(&file, path, FA_READ);
 
-    if (res != FR_OK) {
+    if (res != VF_SUCCESS) {
         printf("vf_open script failed, res = %d\r\n", res);
         return -1;
     }
