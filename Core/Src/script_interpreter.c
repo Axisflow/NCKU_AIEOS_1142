@@ -12,7 +12,7 @@
 #define MAX_SCRIPT_SIZE 4096
 #define MAX_SCRIPT_LINES 128
 #define MAX_LINE_LEN 128
-#define MAX_VARS 8
+#define MAX_VARS 16
 
 typedef struct {
     char name[16];
@@ -272,6 +272,85 @@ static int execute_read(char *line)
     return 0;
 }
 
+static int execute_set(char *line)
+{
+    char name[16] = {0};
+    char value_token[16] = {0};
+
+    int matched = sscanf(line, "set %15s %15s", name, value_token);
+
+    if (matched != 2) {
+        printf("set parse failed: %s\r\n", line);
+        return -1;
+    }
+
+    int value = 0;
+
+    if (get_value(value_token, &value) != 0) {
+        return -1;
+    }
+
+    if (set_var(name, value) != 0) {
+        return -1;
+    }
+
+    printf("Interpreter: set %s=%d\r\n", name, value);
+
+    return 0;
+}
+
+static int execute_tryread(char *line)
+{
+    char name[16] = {0};
+    char path[64] = {0};
+    int default_value = 0;
+    char buffer[32] = {0};
+
+    int matched = sscanf(line, "tryread %15s %63s %d", name, path, &default_value);
+
+    if (matched != 3) {
+        printf("tryread parse failed: %s\r\n", line);
+        return -1;
+    }
+
+    struct file file = {0};
+
+    vf_result_t open_result = vf_open(&file, path, 0);
+
+    if (open_result != VF_SUCCESS) {
+        printf("tryread: vf_open failed: %s, use default=%d\r\n",
+               path,
+               default_value);
+
+        set_var(name, default_value);
+        return 0;
+    }
+
+    __vf_ssize_t n = vf_read(&file, buffer, sizeof(buffer) - 1);
+
+    vf_close(&file);
+
+    if (n < 0) {
+        printf("tryread: vf_read failed: %s, use default=%d\r\n",
+               path,
+               default_value);
+
+        set_var(name, default_value);
+        return 0;
+    }
+
+    buffer[n] = '\0';
+    trim_line(buffer);
+
+    int value = atoi(buffer);
+
+    set_var(name, value);
+
+    printf("Interpreter: tryread %s=%d from %s\r\n", name, value, path);
+
+    return 0;
+}
+
 static int execute_print(char *line)
 {
     char name[16] = {0};
@@ -322,6 +401,14 @@ int ScriptInterpreter_ExecuteLine(char *line)
 
     if (starts_with_word(line, "cat")) {
         return execute_cat(line);
+    }
+
+    if (starts_with_word(line, "set")) {
+        return execute_set(line);
+    }
+
+    if (starts_with_word(line, "tryread")) {
+        return execute_tryread(line);
     }
 
     if (starts_with_word(line, "read")) {
