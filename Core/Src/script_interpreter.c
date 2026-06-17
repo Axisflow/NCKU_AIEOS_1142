@@ -373,6 +373,55 @@ static int execute_print(char *line)
     return 0;
 }
 
+static int execute_ls(char *line)
+{
+    char path[64] = {0};
+
+    int matched = sscanf(line, "ls %63s", path);
+
+    if (matched != 1) {
+        printf("ls parse failed: %s\r\n", line);
+        return -1;
+    }
+
+    struct file file = {0};
+
+    vf_result_t open_result = vf_open(&file, path, 0);
+
+    if (open_result != VF_SUCCESS) {
+        printf("vf_open failed: %s, result=%d\r\n", path, open_result);
+        return -1;
+    }
+
+    char entry[64] = {0};
+    loff_t old_pos = 0;
+    loff_t pos = 0;
+
+    printf("Directory listing for: %s\r\n", path);
+
+    while (1) {
+        old_pos = pos;
+        int empty_old_entry = entry[0] == 0;
+        pos = vf_readdir(&file, entry, sizeof(entry));
+
+        if (pos < 0) {
+            printf("vf_readdir failed: %s\r\n", path);
+            vf_close(&file);
+            return -1;
+        }
+
+        if (pos > old_pos && empty_old_entry) {
+            break;
+        }
+
+        printf("  %s\r\n", entry);
+    }
+
+    vf_close(&file);
+
+    return 0;
+}
+
 int ScriptInterpreter_ExecuteLine(char *line)
 {
     if (line == NULL) {
@@ -417,6 +466,10 @@ int ScriptInterpreter_ExecuteLine(char *line)
 
     if (starts_with_word(line, "print")) {
         return execute_print(line);
+    }
+
+    if (starts_with_word(line, "ls")) {
+        return execute_ls(line);
     }
 
     printf("Unknown command: %s\r\n", line);
