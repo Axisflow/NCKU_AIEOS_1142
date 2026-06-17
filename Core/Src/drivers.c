@@ -1060,5 +1060,67 @@ void delay_us(uint32_t us)
 	while ((DWT->CYCCNT - start) < ticks);
 }
 
+/**************/
+/*   BUTTON   */
+/**************/
 
+static __vf_ssize_t Button_read(struct file *file, char *buf, size_t count)
+{
+    if (buf == NULL || count < 1) {
+        return VF_INVALID;
+    }
+
+    GPIO_PinState state = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+	
+    buf[0] = (state == GPIO_PIN_SET) ? '1' : '0';
+
+    return 1;
+}
+
+struct file_operations Button_fops =
+{
+    .read = Button_read,
+    .write = NULL
+};
+
+void initialize_Button(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    EnableGPIOClock("A");
+
+    GPIO_InitStruct.Pin = B1_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+    struct file_system *fs = pvPortMalloc(sizeof(struct file_system));
+
+    if (fs == NULL) {
+        printf("Button fs malloc failed\r\n");
+        return;
+    }
+
+    memset(fs, 0, sizeof(struct file_system));
+
+    strcpy(fs->name, "button0");
+
+    fs->mount_point = pvPortMalloc(32);
+
+    if (fs->mount_point == NULL) {
+        printf("Button mount_point malloc failed\r\n");
+        vPortFree(fs);
+        return;
+    }
+
+    snprintf((char *)fs->mount_point, 32, "dev/button0");
+
+    fs->fops = &Button_fops;
+    fs->nops = NULL;
+
+    vfs_mount(fs);
+
+    printf("Button mounted: dev/button0\r\n");
+}
 

@@ -131,6 +131,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   /* 按需啟用感測器初始化函式 */
   // initialize_LED();
+  initialize_Button();
   // initialize_DHT11();
   // initialize_DHT22();
   initialize_bodyTemp();

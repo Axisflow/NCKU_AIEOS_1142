@@ -67,6 +67,7 @@ void initialize_DHT11(void);
 void initialize_DHT22(void);
 void initialize_bodyTemp(void);
 void initialize_AD8232(void);
+void initialize_Button(void);
 void MX_I2C1_Init(void);
 void MX_ADC1_Init(void);		
 void delay_us(uint32_t us);
