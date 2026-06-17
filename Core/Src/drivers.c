@@ -947,7 +947,7 @@ __vf_ssize_t AD8232_read(struct file *file, char *buf, size_t count)
                     if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) == HAL_OK)
                     {
                         adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
-                        printf("%lu\n", (unsigned long)adc_value);
+                        printf("%lu\r\n", (unsigned long)adc_value);
                         if (adc_value > max_val) max_val = adc_value;
                         if (adc_value < min_val) min_val = adc_value;
                     }
@@ -972,7 +972,7 @@ __vf_ssize_t AD8232_read(struct file *file, char *buf, size_t count)
                     if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) == HAL_OK)
                     {
                         adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
-                        printf("%lu\n", (unsigned long)adc_value);
+                        printf("%lu\r\n", (unsigned long)adc_value);
                         
                         // R-peak detection with hysteresis
                         if (adc_value > threshold && peak_flag == 0)

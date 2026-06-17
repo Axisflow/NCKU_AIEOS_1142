@@ -41,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define INIT_SCRIPT_PATH "/bodytemp.sh"
+#define INIT_SCRIPT_PATH "/ad8232.sh"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
