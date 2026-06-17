@@ -144,6 +144,11 @@ int main(void)
   MX_I2C1_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  /* Mount file systems */
+  mount_default(&rom_fs, "");
+  mount_fatfs(&sdcard_fs, "home");
+  mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
+
   /* 按需啟用感測器初始化函式 */
   // initialize_LED();
   initialize_Button();
@@ -152,11 +157,9 @@ int main(void)
   initialize_bodyTemp();
   initialize_AD8232();
 
-  mount_default(&rom_fs, "");
-  mount_fatfs(&sdcard_fs, "home");
-  mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
   xTaskCreate(StartupTask, "StartupTask", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
   vTaskStartScheduler();
+
   unmount_uart2_tty(&uart2_tty_fs);
   unmount_fatfs(&sdcard_fs);
   unmount_default(&rom_fs);

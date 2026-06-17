@@ -125,7 +125,7 @@ static int fatfs_open(struct file *file, const char *path)
         return -res; // Failed to open directory
     } else {
         data->fattrib = AM_DIR; // Mark as directory
-        if (strcmp(_p, "")) data->fattrib |= AM_NOT_ROOT; // Mark as not root
+        if (strcmp(path, "")) data->fattrib |= AM_NOT_ROOT; // Mark as not root
     }
 
     data->d_off = 0;
@@ -298,11 +298,12 @@ static loff_t fatfs_iterate_shared(struct file *file, char *path, size_t path_ma
     else {
         SemaphoreHandle_t mutex = ((struct fat_fs *) file->fs)->mutex;
         xSemaphoreTake(mutex, portMAX_DELAY);
+        BYTE *old_dir = data->dir.dir;
         FRESULT res = f_readdir(&data->dir, &data->_info);
         xSemaphoreGive(mutex);
         if (res != FR_OK) {
             return data->d_off; // Failed to read directory
-        } else if (data->_info.fname[0] == '\0') {
+        } else if (old_dir == data->dir.dir) {
             return ++data->d_off; // No more entries
         }
         

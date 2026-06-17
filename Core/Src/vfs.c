@@ -92,9 +92,10 @@ vfs_result_t vfs_dir_emit(const char *src, char *dst, size_t count, size_t *recl
     }
 
     const char *src_begin = src + strlen(src) - *reclen;
-    size_t emit_len = *reclen < (count - 1) ? *reclen : count - 1;
+    size_t emit_len = *reclen < (count - 1) ? *reclen : (count - 1);
     strncpy(dst, src_begin, emit_len);
     dst[emit_len] = '\0'; // Null-terminate the emitted entry name
+    *reclen -= emit_len; // Update the remaining record length
     return VF_SUCCESS;
 }
 

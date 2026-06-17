@@ -402,6 +402,7 @@ static int execute_ls(char *line)
     while (1) {
         old_pos = pos;
         int empty_old_entry = entry[0] == 0;
+        entry[0] = 0;
         pos = vf_readdir(&file, entry, sizeof(entry));
 
         if (pos < 0) {
@@ -410,7 +411,7 @@ static int execute_ls(char *line)
             return -1;
         }
 
-        if (pos > old_pos && empty_old_entry) {
+        if (pos > old_pos && empty_old_entry && entry[0] == 0) {
             break;
         }
 
