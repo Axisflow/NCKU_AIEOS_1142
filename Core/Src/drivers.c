@@ -836,7 +836,7 @@ void initialize_bodyTemp(void)
         config |= (bodyTemp_Config[i].InterruptMode << 1);
         config |= (bodyTemp_Config[i].OSPolarity << 2);
         config |= (bodyTemp_Config[i].FaultQueue << 3);
-        config |= (bodyTemp_Config[i].TimeoutEnable << 5);
+        config |= (bodyTemp_Config[i].TimeoutEnable << 6); // D6 is Timeout, D5 is Data Format (Extended Mode)
 
 		I2C1_ScanAndReport(bodyTemp_Config[i].I2Cx);
 
@@ -934,51 +934,63 @@ __vf_ssize_t AD8232_read(struct file *file, char *buf, size_t count)
             uint32_t beat_count = 0;
             uint8_t peak_flag = 0;
 
-            const uint32_t threshold = 4060; // 需依實際 ECG 調整
-
-            uint32_t start_time = HAL_GetTick();
-
-            while ((HAL_GetTick() - start_time) < 5000)
+            // 1. 2-second Dynamic Threshold Calibration
+            uint32_t cal_start = HAL_GetTick();
+            uint32_t max_val = 0;
+            uint32_t min_val = 4095;
+            
+            while ((HAL_GetTick() - cal_start) < 2000)
             {
                 uint32_t adc_value = 0;
-
-
-                if (HAL_ADC_Start(AD8232_Config[i].ADCx) != HAL_OK)
+                if (HAL_ADC_Start(AD8232_Config[i].ADCx) == HAL_OK)
                 {
-                    return VF_ERROR;
-                }
-
-                if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) != HAL_OK)
-                {
+                    if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) == HAL_OK)
+                    {
+                        adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
+                        printf("%lu\n", (unsigned long)adc_value);
+                        if (adc_value > max_val) max_val = adc_value;
+                        if (adc_value < min_val) min_val = adc_value;
+                    }
                     HAL_ADC_Stop(AD8232_Config[i].ADCx);
-                    return VF_ERROR;
                 }
-
-                adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
-
-                printf("%d\n", adc_value);
-
-                HAL_ADC_Stop(AD8232_Config[i].ADCx);
-
-                // ===== R peak detect =====
-                if (adc_value > threshold && peak_flag == 0)
-                {
-                    peak_flag = 1;
-                    beat_count++;
-                }
-
-                if (adc_value < threshold - 200)
-                {
-                    peak_flag = 0;
-                }
-
-                HAL_Delay(5); // ~200Hz sampling
+                HAL_Delay(5);
             }
-
-            // ===== BPM evaluation =====
-            uint32_t bpm = beat_count * 12;
-            printf("%d\n", beat_count);
-
+            
+            uint32_t threshold = 3000;
+            if (max_val > min_val && (max_val - min_val) > 200)
+            {
+                threshold = min_val + (max_val - min_val) * 7 / 10; // 70% level
+            }
+            
+            // 2. 58-second Main Measurement Loop (Total 60 seconds)
+            uint32_t main_start = HAL_GetTick();
+            while ((HAL_GetTick() - main_start) < 58000)
+            {
+                uint32_t adc_value = 0;
+                if (HAL_ADC_Start(AD8232_Config[i].ADCx) == HAL_OK)
+                {
+                    if (HAL_ADC_PollForConversion(AD8232_Config[i].ADCx, 10) == HAL_OK)
+                    {
+                        adc_value = HAL_ADC_GetValue(AD8232_Config[i].ADCx);
+                        printf("%lu\n", (unsigned long)adc_value);
+                        
+                        // R-peak detection with hysteresis
+                        if (adc_value > threshold && peak_flag == 0)
+                        {
+                            peak_flag = 1;
+                            beat_count++;
+                        }
+                        if (adc_value < threshold - 200)
+                        {
+                            peak_flag = 0;
+                        }
+                    }
+                    HAL_ADC_Stop(AD8232_Config[i].ADCx);
+                }
+                HAL_Delay(5);
+            }
+            
+            uint32_t bpm = beat_count; // 1-minute beat count is exactly BPM
             return snprintf(buf, count, "%lu BPM\n", (unsigned long)bpm);
         }
     }
