@@ -78,7 +78,7 @@ const struct file_system *vfs_lookup(const char *path) {
     
     for (struct __fs_hlist *current = __fs_mapping; current; current = current->next) {
         if (strncmp(path, current->fs->mount_point, strlen(current->fs->mount_point)) == 0 &&
-            (path[strlen(current->fs->mount_point)] == '/' || path[strlen(current->fs->mount_point)] == '\0')) {
+            (path[strlen(current->fs->mount_point)] == '/' || path[strlen(current->fs->mount_point)] == '\0' || strlen(current->fs->mount_point) == 0)) {
             return current->fs; // Found the mounted file system
         }
     }
