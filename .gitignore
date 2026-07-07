@@ -6,3 +6,34 @@
 # STM32CubeIDE
 .settings/
 *.launch
+
+# Object files
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.d
+
+# Libraries
+*.a
+*.lib
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Dependency files
+*.dep
+
+# OS generated files
+Thumbs.db
+.DS_Store
+
+# IDE / Editor
+.vscode/
+*.swp
+*.swo
+*~
