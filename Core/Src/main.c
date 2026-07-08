@@ -22,10 +22,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-
+#include "program_loader.h"
 #include "drivers.h"
+#include "vfs.h"
+#include "vfsio.h"
 #include "vfs_default.h"
 #include "vfs_fatfs.h"
 #include "vfs_uart2_tty.h"
@@ -38,7 +41,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define INIT_SCRIPT_PATH "/init.sh"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,12 +66,48 @@ static void MX_GPIO_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void StartupTask(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int _write(int file, char *ptr, int len)
+{
+  struct file uart2_tty_file;
+  vf_result_t res = vf_open(&uart2_tty_file, "dev/uart2_tty", 0);
+  if (res != VF_SUCCESS) {
+      return res;
+  }
 
+  res = vf_write(&uart2_tty_file, ptr, (size_t)len);
+  if (res != VF_SUCCESS) {
+      vf_close(&uart2_tty_file);
+      return res;
+  }
+
+  vf_close(&uart2_tty_file);
+  return res;
+}
+
+static void StartupTask(void *argument)
+{
+    printf("StartupTask start\r\n");
+
+    printf("Run init script: %s\r\n", INIT_SCRIPT_PATH);
+
+    char path_buffer[256];
+    snprintf(path_buffer, sizeof(path_buffer), "%s%s", "home", INIT_SCRIPT_PATH);
+
+    int result = ProgramLoader_RunScript(path_buffer);
+
+    if (result == 0) {
+        printf("Init script finished\r\n");
+    } else {
+        printf("Init script failed, result=%d\r\n", result);
+    }
+
+    vTaskDelete(NULL);
+}
 /* USER CODE END 0 */
 
 /**
@@ -88,10 +127,6 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
-  initialize_LED();
-  initialize_DHT22();
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -106,11 +141,25 @@ int main(void)
   MX_SPI2_Init();
   MX_USART2_UART_Init();
   MX_FATFS_Init();
+  MX_I2C1_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
+  /* Mount file systems */
   mount_default(&rom_fs, "");
-  mount_fatfs(&sdcard_fs, "fatfs");
+  mount_fatfs(&sdcard_fs, "home");
   mount_uart2_tty(&uart2_tty_fs, "dev/uart2_tty", 128);
-  vTaskStartScheduler(); /* Start FreeRTOS scheduler */
+
+  /* 按需啟用感測器初始化函式 */
+  // initialize_LED();
+  initialize_Button();
+  // initialize_DHT11();
+  // initialize_DHT22();
+  initialize_bodyTemp();
+  initialize_AD8232();
+
+  xTaskCreate(StartupTask, "StartupTask", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
+  vTaskStartScheduler();
+
   unmount_uart2_tty(&uart2_tty_fs);
   unmount_fatfs(&sdcard_fs);
   unmount_default(&rom_fs);
@@ -321,6 +370,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : DHT11_Pin */
+  GPIO_InitStruct.Pin = DHT11_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(DHT11_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : SD_CS_Pin */
   GPIO_InitStruct.Pin = SD_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -378,14 +433,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(OTG_FS_OverCurrent_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : Audio_SCL_Pin Audio_SDA_Pin */
-  GPIO_InitStruct.Pin = Audio_SCL_Pin|Audio_SDA_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : MEMS_INT2_Pin */
   GPIO_InitStruct.Pin = MEMS_INT2_Pin;

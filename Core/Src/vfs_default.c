@@ -70,7 +70,7 @@ static int default_open(struct file *file, const char *path) {
         node = node->next;
     }
 
-    if (node == NULL) {
+    if (!node) {
         return -1; // No matching mount point found
     }
 
@@ -97,6 +97,7 @@ static int default_open(struct file *file, const char *path) {
     strcpy(data->path, path);
 
     data->curr = &__fs_mapping;
+    data->records = NULL; // Initialize the records list to NULL
     data->d_off = 0;
     data->d_reclen = 0;
     file->private_data = data;
@@ -176,8 +177,8 @@ static loff_t default_iterate_shared(struct file *file, char *path, size_t path_
             return ++data->d_off; // No more entries to read
         }
 
-        const char *entry_name = (*data->curr)->fs->mount_point + strlen(data->path); // Get the entry name by removing the current path prefix
-        size_t entry_name_len = strcspn((*data->curr)->fs->mount_point + strlen(data->path), "/"); // The entry name is the substring until the next '/' or the end of string
+        const char *entry_name = (*data->curr)->fs->mount_point + strlen(data->path) + 1; // Get the entry name by removing the current path prefix
+        size_t entry_name_len = strcspn(entry_name, "/"); // The entry name is the substring until the next '/' or the end of string
 
         if (entry_name_len >= data->d_name_cap) {
             // Reallocate d_name buffer if the entry name exceeds the current capacity
